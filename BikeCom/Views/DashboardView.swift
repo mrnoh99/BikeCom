@@ -345,10 +345,11 @@ private extension String {
     var prefix5: String { String(prefix(5)) }
 }
 
+#if DEBUG
 #Preview("iPhone 12 mini") {
-    let session = RideSession.preview
-    return DashboardView()
-        .environmentObject(session)
+    DashboardView()
+        .environmentObject(RideSession.preview)
         .preferredColorScheme(.dark)
         .previewDevice(PreviewDevice(rawValue: "iPhone 12 mini"))
 }
+#endif

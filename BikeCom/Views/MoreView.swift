@@ -108,9 +108,10 @@ struct MoreView: View {
     }
 }
 
+#if DEBUG
 #Preview {
-    let session = RideSession.preview
-    return MoreView()
-        .environmentObject(session)
+    MoreView()
+        .environmentObject(RideSession.preview)
         .preferredColorScheme(.dark)
 }
+#endif

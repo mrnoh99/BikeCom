@@ -47,33 +47,47 @@ echo "   ✓ $APP"
 echo "   ✓ Watch: Watch/BikeComWatch.app"
 
 echo "==> 3. iPhone에 설치"
-if xcrun devicectl device install app --device "$DEVICE_ID" "$APP" 2>/dev/null; then
-  echo "   ✓ devicectl 설치 완료"
-elif xcrun devicectl device install app --device "$DEVICE_ID" "$APP"; then
-  echo "   ✓ devicectl 설치 완료"
+if xcrun devicectl device install app --device "$DEVICE_ID" "$APP"; then
+  echo "   ✓ iPhone 설치 완료"
 else
-  echo "   ⚠️ devicectl 실패 — Xcode에서 ⌘R 로 설치하세요"
+  echo "   ❌ iPhone 설치 실패 — Xcode에서 BikeCom 스킴 + iPhone 선택 → ⌘R"
+  exit 1
+fi
+
+WATCH_APP="$APP/Watch/BikeComWatch.app"
+echo ""
+echo "==> 4. Watch에 직접 설치"
+WATCH_LINES="$(xcrun xctrace list devices 2>/dev/null | grep -E 'Apple Watch' | grep -v Simulator || true)"
+if [[ -z "$WATCH_LINES" ]]; then
+  echo "   ⚠️ 연결된 Watch 없음"
+  echo "   → iPhone Watch 앱 → 일반 → BikeCom → Apple Watch에 설치 ON"
+else
+  INSTALLED=0
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    WATCH_ID="$(echo "$line" | sed -E 's/.*\(([0-9A-Fa-f-]+)\)[[:space:]]*$/\1/')"
+    WATCH_NAME="$(echo "$line" | sed -E 's/[[:space:]]*\([0-9A-Fa-f-]+\)[[:space:]]*$//')"
+    echo "   → $WATCH_NAME ($WATCH_ID)"
+    if xcrun devicectl device install app --device "$WATCH_ID" "$WATCH_APP"; then
+      echo "   ✓ Watch 설치 완료"
+      INSTALLED=1
+    else
+      echo "   ❌ Watch 설치 실패"
+    fi
+  done <<< "$WATCH_LINES"
+  if [[ "$INSTALLED" -eq 0 ]]; then
+    echo "   → iPhone Watch 앱 → 일반 → BikeCom → Apple Watch에 설치 ON"
+  fi
 fi
 
 cat <<'EOF'
 
-==> 4. Watch 설치 (iPhone에서 직접)
+참고:
+  • ./scripts/build.sh 는 컴파일만 합니다(CODE_SIGNING_ALLOWED=NO → 기기 설치 없음).
+  • Xcode Device Monitor 에 "No app installed" 가 보이면 이 스크립트 또는 Xcode ⌘R 로 설치하세요.
+  • 스킴은 BikeCom (BikeComWatch 단독 Run 은 Watch 만 대상 — companion 은 iPhone 경유).
 
-  ① Watch 개발자 모드 (최초 1회)
-     Watch 설정 → 개인정보 보호 및 보안 → 개발자 모드 → ON → 재부팅
-
-  ② iPhone Watch 앱
-     일반 → (아래로 스크롤) → BikeCom
-     → "Apple Watch에 설치" 또는 "쇼 앱" ON
-
-  ③ 안 보이면
-     - iPhone·Watch에서 BikeCom 삭제
-     - Xcode: Product → Clean Build Folder
-     - Xcode: BikeCom 스킴 + iPhone 선택 → ⌘R
-     - Watch 재부팅
-
-  ④ Xcode 서명 (둘 다 Team 필요)
-     TARGETS → BikeCom → Signing & Capabilities → Team
-     TARGETS → BikeComWatch → Signing & Capabilities → Team
+Watch 개발자 모드 (최초 1회): Watch 설정 → 개인정보 보호 및 보안 → 개발자 모드 → ON → 재부팅
+Xcode 서명: TARGETS → BikeCom + BikeComWatch 둘 다 Team 설정
 
 EOF

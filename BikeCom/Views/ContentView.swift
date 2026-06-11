@@ -21,18 +21,18 @@ struct ContentView: View {
     }
 }
 
+#if DEBUG
 // 캔버스(Resume)에서 더미 데이터가 채워진 전체 앱 목업을 볼 수 있다.
 #Preview("iPhone 12 mini (목업)") {
-    let session = RideSession.preview
-    return ContentView()
-        .environmentObject(session)
+    ContentView()
+        .environmentObject(RideSession.preview)
         .preferredColorScheme(.dark)
         .previewDevice(PreviewDevice(rawValue: "iPhone 12 mini"))
 }
 
 #Preview("앱 전체 (빈 상태)") {
-    let session = RideSession()
-    return ContentView()
-        .environmentObject(session)
+    ContentView()
+        .environmentObject(RideSession())
         .preferredColorScheme(.dark)
 }
+#endif

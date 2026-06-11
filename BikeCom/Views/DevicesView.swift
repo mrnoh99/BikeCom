@@ -76,9 +76,10 @@ struct DevicesView: View {
     }
 }
 
+#if DEBUG
 #Preview {
-    let session = RideSession.preview
-    return DevicesView()
-        .environmentObject(session)
+    DevicesView()
+        .environmentObject(RideSession.preview)
         .preferredColorScheme(.dark)
 }
+#endif
