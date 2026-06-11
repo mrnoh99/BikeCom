@@ -109,6 +109,10 @@ targets:
             echo "error: Watch CFBundleIconName missing — install will fail on device"
             exit 1
           fi
+          if [ "$(/usr/libexec/PlistBuddy -c 'Print :WKApplication' "$WATCH_APP/Info.plist" 2>/dev/null)" != "true" ]; then
+            echo "error: Watch WKApplication != true — watchOS rejects install (single-target 워치 앱 필수 키)"
+            exit 1
+          fi
 
   # 애플워치 컴패니언 앱 (실시간 심박 측정)
   BikeComWatch:
@@ -122,6 +126,9 @@ targets:
         CFBundleDisplayName: BikeCom
         NSHealthShareUsageDescription: "라이딩 중 심박·속도·케이던스를 측정합니다."
         NSHealthUpdateUsageDescription: "워크아웃 세션을 Apple 건강에 기록합니다."
+        # Xcode 26: 단일 타깃 워치 앱은 이 키가 있어야 설치된다. 없으면 watchOS 가
+        # 구형 WatchKit Extension 구조로 인식해 설치(또는 워치 동기화)에 실패한다.
+        WKApplication: true
         WKCompanionAppBundleIdentifier: com.jaisungnoh.bikecom
         WKRunsIndependentlyOfCompanionApp: false
         WKBackgroundModes:

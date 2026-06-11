@@ -24,6 +24,8 @@
 	<string>라이딩 중 심박·속도·케이던스를 측정합니다.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>워크아웃 세션을 Apple 건강에 기록합니다.</string>
+	<key>WKApplication</key>
+	<true/>
 	<key>WKBackgroundModes</key>
 	<array>
 		<string>workout-processing</string>

@@ -131,6 +131,12 @@ BikeComWatch/                  # 애플워치 앱
 
 > 워치 앱은 아이폰 앱에 **임베드**되어 함께 설치된다(`project.yml` 의 `embed: true`).
 > 두 타깃 모두 **HealthKit Capability** 와 서명 팀이 필요하다(Xcode Signing & Capabilities).
+>
+> ⚠️ **워치 앱이 설치되지 않을 때**: 단일 타깃 워치 앱(Xcode 26)은 `Info.plist` 에
+> `WKApplication = YES` 가 반드시 있어야 한다. 없으면 watchOS 가 구형 WatchKit
+> Extension 구조로 인식해 설치(또는 iPhone Watch 앱에서의 동기화)에 실패한다.
+> 이 키는 `project.yml` 의 워치 `info.properties` 에 정의되어 있고, 빌드 후
+> `postBuildScripts` 가 임베드된 워치 `Info.plist` 에서 값이 `true` 인지 검증한다.
 
 ## 현재 한계 / 다음 단계
 
