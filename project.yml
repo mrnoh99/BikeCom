@@ -1,0 +1,136 @@
+name: BikeComputer
+options:
+  bundleIdPrefix: com.jaisungnoh.bikecomputer
+  deploymentTarget:
+    iOS: "26.0"
+    watchOS: "26.0"
+  createIntermediateGroups: true
+  # Xcode 26+: watch 앱은 Watch/ 가 아니라 PlugIns/ 에 임베드해야 한다.
+  postGenCommand: |
+    # Xcode 26: Watch 앱은 PlugIns/ 에 임베드 + CodeSignOnCopy
+    sed -i '' \
+      -e 's|dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";|dstPath = "";|' \
+      -e 's|dstSubfolderSpec = 16;|dstSubfolderSpec = 13;|' \
+      -e 's|ATTRIBUTES = (RemoveHeadersOnCopy, );|ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, );|' \
+      BikeComputer.xcodeproj/project.pbxproj
+    grep -q 'dstSubfolderSpec = 13' BikeComputer.xcodeproj/project.pbxproj \
+      || (echo "error: Watch embed must use PlugIns (dstSubfolderSpec=13)" && exit 1)
+    grep -q 'CodeSignOnCopy' BikeComputer.xcodeproj/project.pbxproj \
+      || (echo "error: Watch embed must use CodeSignOnCopy" && exit 1)
+
+schemes:
+  BikeComputer:
+    build:
+      targets:
+        BikeComputer: all
+        BikeComputerWatch: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  BikeComputerWatch:
+    build:
+      targets:
+        BikeComputerWatch: all
+    run:
+      config: Debug
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: 9AWEB9NYHH
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.9"
+    GENERATE_INFOPLIST_FILE: NO
+
+# 과거 코스 오버레이용 Google 지도 SDK. 쓰지 않으려면 이 packages 블록과
+# 아래 BikeComputer 의 GoogleMaps 의존성을 지우면 Apple 지도로 폴백한다.
+packages:
+  GoogleMaps:
+    url: https://github.com/googlemaps/ios-maps-sdk
+    from: "9.0.0"
+
+targets:
+  # 아이폰 앱
+  BikeComputer:
+    type: application
+    platform: iOS
+    sources:
+      - path: BikeComputer
+    info:
+      path: BikeComputer/App/Info.plist
+      properties:
+        # 없으면 iOS 가 구형 화면 비율로 letterbox → 위아래 검은 여백 발생.
+        UILaunchStoryboardName: LaunchScreen
+        GMSApiKey: ""
+        NSCalendarsFullAccessUsageDescription: "라이딩 종료 시 요약을 캘린더에 기록합니다."
+        NSHealthShareUsageDescription: "누적 사이클링 거리와 SpO2를 표시하고, 운동 기록을 가져옵니다."
+        NSHealthUpdateUsageDescription: "라이딩을 Apple 건강 앱에 저장합니다."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "백그라운드에서도 라이딩 경로를 기록합니다."
+        NSLocationWhenInUseUsageDescription: "라이딩 중 GPS 경로·거리·속도를 기록합니다."
+        UIBackgroundModes:
+          - location
+        NSUbiquitousContainers:
+          iCloud.com.jaisungnoh.bikecomputer:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: BikeCom
+            NSUbiquitousContainerSupportedFolderLevels: Any
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaisungnoh.bikecomputer
+        INFOPLIST_FILE: BikeComputer/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: BikeComputer/App/BikeComputer.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - target: BikeComputerWatch
+        embed: true
+        codeSign: true
+        copy:
+          destination: plugins
+      - package: GoogleMaps
+        product: GoogleMaps
+    postBuildScripts:
+      - name: Verify Watch App Embed
+        script: |
+          WATCH_APP="${TARGET_BUILD_DIR}/${WRAPPER_NAME}/PlugIns/BikeComputerWatch.app"
+          if [ ! -d "$WATCH_APP" ]; then
+            echo "error: BikeComputerWatch.app missing from PlugIns — run xcodegen generate"
+            exit 1
+          fi
+          if [ ! -f "$WATCH_APP/Assets.car" ]; then
+            echo "error: Watch Assets.car missing — app icon not compiled"
+            exit 1
+          fi
+          if ! /usr/libexec/PlistBuddy -c "Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName" "$WATCH_APP/Info.plist" >/dev/null 2>&1; then
+            echo "error: Watch CFBundleIconName missing — install will fail on device"
+            exit 1
+          fi
+
+  # 애플워치 컴패니언 앱 (실시간 심박 측정)
+  BikeComputerWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: BikeComputerWatch
+    info:
+      path: BikeComputerWatch/Info.plist
+      properties:
+        CFBundleDisplayName: BikeComputer
+        NSHealthShareUsageDescription: "라이딩 중 심박·속도·케이던스를 측정합니다."
+        NSHealthUpdateUsageDescription: "워크아웃 세션을 Apple 건강에 기록합니다."
+        WKCompanionAppBundleIdentifier: com.jaisungnoh.bikecomputer
+        WKRunsIndependentlyOfCompanionApp: false
+        WKBackgroundModes:
+          - workout-processing
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaisungnoh.bikecomputer.watchkitapp
+        INFOPLIST_FILE: BikeComputerWatch/Info.plist
+        CODE_SIGN_ENTITLEMENTS: BikeComputerWatch/BikeComputerWatch.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        TARGETED_DEVICE_FAMILY: "4"

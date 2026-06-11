@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>GMSApiKey</key>
+	<string></string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>라이딩 종료 시 요약을 캘린더에 기록합니다.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>누적 사이클링 거리와 SpO2를 표시하고, 운동 기록을 가져옵니다.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>라이딩을 Apple 건강 앱에 저장합니다.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>백그라운드에서도 라이딩 경로를 기록합니다.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>라이딩 중 GPS 경로·거리·속도를 기록합니다.</string>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.com.jaisungnoh.bikecomputer</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>BikeCom</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>Any</string>
+		</dict>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+</dict>
+</plist>
