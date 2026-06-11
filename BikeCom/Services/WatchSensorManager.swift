@@ -115,7 +115,7 @@ final class WatchSensorManager: NSObject, ObservableObject {
                 }
                 self.lastError = """
                 Watch 앱이 설치되지 않았습니다.
-                iPhone Watch 앱 → 일반 → BikeComputer → "Apple Watch에 설치"를 켜세요.
+                iPhone Watch 앱 → 일반 → BikeCom → "Apple Watch에 설치"를 켜세요.
                 """
                 self.statusMessage = "워치 앱 미설치"
                 self.retryWatchLaunch(config: config, attempt: attempt)

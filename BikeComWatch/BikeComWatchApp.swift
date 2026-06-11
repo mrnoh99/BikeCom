@@ -5,7 +5,7 @@ import WatchKit
 /// 워치 앱 진입점. 아이폰이 `startWatchApp(toHandle:)` 으로 띄우면
 /// `WatchAppDelegate.handle(_:)` 가 워크아웃을 시작한다.
 @main
-struct BikeComputerWatchApp: App {
+struct BikeComWatchApp: App {
     @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var delegate
 
     var body: some Scene {

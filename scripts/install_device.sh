@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# BikeComputer — 서명 포함 iPhone 설치 (Watch companion 포함)
+# BikeCom — 서명 포함 iPhone 설치 (Watch companion 포함)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,20 +31,20 @@ fi
 
 echo "==> 2. iPhone 빌드 (Watch 포함)"
 "$XCODEBUILD" \
-  -project BikeComputer.xcodeproj \
-  -scheme BikeComputer \
+  -project BikeCom.xcodeproj \
+  -scheme BikeCom \
   -destination "id=${DEVICE_ID}" \
   -configuration Debug \
   -allowProvisioningUpdates \
   build
 
-APP=$(find ~/Library/Developer/Xcode/DerivedData -path '*Debug-iphoneos/BikeComputer.app' -not -path '*Index*' -newer BikeComputer.xcodeproj 2>/dev/null | head -1)
-if [[ -z "$APP" || ! -d "$APP/PlugIns/BikeComputerWatch.app" ]]; then
-  echo "❌ BikeComputer.app 또는 Watch companion 없음"
+APP=$(find ~/Library/Developer/Xcode/DerivedData -path '*Debug-iphoneos/BikeCom.app' -not -path '*Index*' -newer BikeCom.xcodeproj 2>/dev/null | head -1)
+if [[ -z "$APP" || ! -d "$APP/PlugIns/BikeComWatch.app" ]]; then
+  echo "❌ BikeCom.app 또는 Watch companion 없음"
   exit 1
 fi
 echo "   ✓ $APP"
-echo "   ✓ Watch: PlugIns/BikeComputerWatch.app"
+echo "   ✓ Watch: PlugIns/BikeComWatch.app"
 
 echo "==> 3. iPhone에 설치"
 if xcrun devicectl device install app --device "$DEVICE_ID" "$APP" 2>/dev/null; then
@@ -63,17 +63,17 @@ cat <<'EOF'
      Watch 설정 → 개인정보 보호 및 보안 → 개발자 모드 → ON → 재부팅
 
   ② iPhone Watch 앱
-     일반 → (아래로 스크롤) → BikeComputer
+     일반 → (아래로 스크롤) → BikeCom
      → "Apple Watch에 설치" 또는 "쇼 앱" ON
 
   ③ 안 보이면
-     - iPhone·Watch에서 BikeComputer 삭제
+     - iPhone·Watch에서 BikeCom 삭제
      - Xcode: Product → Clean Build Folder
-     - Xcode: BikeComputer 스킴 + iPhone 선택 → ⌘R
+     - Xcode: BikeCom 스킴 + iPhone 선택 → ⌘R
      - Watch 재부팅
 
   ④ Xcode 서명 (둘 다 Team 필요)
-     TARGETS → BikeComputer → Signing & Capabilities → Team
-     TARGETS → BikeComputerWatch → Signing & Capabilities → Team
+     TARGETS → BikeCom → Signing & Capabilities → Team
+     TARGETS → BikeComWatch → Signing & Capabilities → Team
 
 EOF

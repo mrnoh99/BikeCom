@@ -14,30 +14,30 @@ echo "==> xcodegen"
 xcodegen generate
 
 echo "==> 타깃 확인"
-"$XCODEBUILD" -project BikeComputer.xcodeproj -list | grep -E 'Targets:|BikeComputer'
+"$XCODEBUILD" -project BikeCom.xcodeproj -list | grep -E 'Targets:|BikeCom'
 
 echo "==> 빌드 (iPhone + Watch)"
 "$XCODEBUILD" \
-  -project BikeComputer.xcodeproj \
-  -scheme BikeComputer \
+  -project BikeCom.xcodeproj \
+  -scheme BikeCom \
   -destination 'generic/platform=iOS' \
   -configuration Debug \
   build CODE_SIGNING_ALLOWED=NO
 
-APP=$(find ~/Library/Developer/Xcode/DerivedData -path '*Debug-iphoneos/BikeComputer.app' -not -path '*Index*' 2>/dev/null | head -1)
-WATCH="$APP/PlugIns/BikeComputerWatch.app"
+APP=$(find ~/Library/Developer/Xcode/DerivedData -path '*Debug-iphoneos/BikeCom.app' -not -path '*Index*' 2>/dev/null | head -1)
+WATCH="$APP/PlugIns/BikeComWatch.app"
 
 echo ""
 echo "==> 결과"
 if [[ -z "$APP" ]]; then
-  echo "❌ BikeComputer.app 없음"
+  echo "❌ BikeCom.app 없음"
   exit 1
 fi
 echo "✓ iPhone 앱: $APP"
 
 if [[ ! -d "$WATCH" ]]; then
   echo "❌ Watch 앱 없음: $WATCH"
-  echo "   → Product → Scheme → Edit Scheme → Build 에 BikeComputerWatch 체크"
+  echo "   → Product → Scheme → Edit Scheme → Build 에 BikeComWatch 체크"
   exit 1
 fi
 echo "✓ Watch 앱: $WATCH"
@@ -55,7 +55,7 @@ echo "✅ 빌드 OK — Watch 앱은 iPhone 앱 안에 포함되어 있습니다
 echo ""
 echo "⚠️  check_watch.sh 는 기기에 설치하지 않습니다."
 echo "실기기 설치:"
-echo "  1) Xcode: BikeComputer 스킴 → iPhone → Team 서명 → ⌘R"
+echo "  1) Xcode: BikeCom 스킴 → iPhone → Team 서명 → ⌘R"
 echo "  2) 또는: ./scripts/install_device.sh <iPhone-UDID>"
-echo "  3) iPhone Watch 앱 → 일반 → BikeComputer → 설치 ON"
+echo "  3) iPhone Watch 앱 → 일반 → BikeCom → 설치 ON"
 echo "  4) Watch: 설정 → 개발자 모드 ON (최초 1회)"

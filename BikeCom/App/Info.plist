@@ -32,7 +32,7 @@
 	<string>라이딩 중 GPS 경로·거리·속도를 기록합니다.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
-		<key>iCloud.com.jaisungnoh.bikecomputer</key>
+		<key>iCloud.com.jaisungnoh.bikecom</key>
 		<dict>
 			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
 			<true/>

@@ -51,7 +51,7 @@
 - **iCloud 동기화**: 앱 iCloud 컨테이너를 iCloud Drive 에 **`BikeCom`** 폴더로 표시
   (`NSUbiquitousContainers` / `NSUbiquitousContainerName`). 그 안에 `rides.json`(상세+경로)과 `GPX/` 저장 →
   기기 간 동기화. iCloud 미사용 시 로컬 Documents 폴백. (Xcode 에서 **iCloud > iCloud Documents** Capability +
-  컨테이너 `iCloud.com.jaisungnoh.bikecomputer` 설정 필요)
+  컨테이너 `iCloud.com.jaisungnoh.bikecom` 설정 필요)
 - 백그라운드에서도 블루투스·위치 계속 기록(`UIBackgroundModes`).
 
 ### 애플워치 측정 (watchOS 컴패니언 앱)
@@ -92,7 +92,7 @@ HKWorkout 을 저장한다(둘 중 하나만 저장해 이중 계산 방지).
 ```bash
 brew install xcodegen      # 최초 1회
 ./scripts/build.sh         # xcodegen + (필요 시 watchOS 런타임) + 빌드
-open BikeComputer.xcodeproj # Xcode 에서 실 기기로 실행
+open BikeCom.xcodeproj # Xcode 에서 실 기기로 실행
 ```
 
 > 워치 컴패니언 앱이 포함되어 **watchOS 시뮬레이터 런타임**이 필요하다.
@@ -104,8 +104,8 @@ open BikeComputer.xcodeproj # Xcode 에서 실 기기로 실행
 ## 구조
 
 ```
-BikeComputer/                       # 아이폰 앱
-  App/        BikeComputerApp.swift · ContentView · Info.plist · *.entitlements
+BikeCom/                       # 아이폰 앱
+  App/        BikeComApp.swift · ContentView · Info.plist · *.entitlements
   Design/     Theme.swift                 # 색상·폰트 토큰
   Models/     Units.swift · RideRecord.swift(+RideStore)
   Services/   BluetoothManager.swift      # CoreBluetooth: CSC(속도·케이던스) 파싱 — 폴백
@@ -122,8 +122,8 @@ BikeComputer/                       # 아이폰 앱
               DevicesView · MoreView · Components/MetricCell
   Assets.xcassets
 
-BikeComputerWatch/                  # 애플워치 앱
-  BikeComputerWatchApp.swift          # @main + WKApplicationDelegate(handle workout)
+BikeComWatch/                  # 애플워치 앱
+  BikeComWatchApp.swift          # @main + WKApplicationDelegate(handle workout)
   WatchContentView.swift              # 실시간 심박 화면 + 시작/정지
   WorkoutManager.swift                # HKWorkoutSession·HKLiveWorkoutBuilder(심박·속도·케이던스) → WCSession 전송
   Info.plist · *.entitlements · Assets.xcassets

@@ -9,11 +9,11 @@
 	<!-- iCloud Documents (라이딩 기록 rides.json 동기화) -->
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
-		<string>iCloud.com.jaisungnoh.bikecomputer</string>
+		<string>iCloud.com.jaisungnoh.bikecom</string>
 	</array>
 	<key>com.apple.developer.ubiquity-container-identifiers</key>
 	<array>
-		<string>iCloud.com.jaisungnoh.bikecomputer</string>
+		<string>iCloud.com.jaisungnoh.bikecom</string>
 	</array>
 	<key>com.apple.developer.icloud-services</key>
 	<array>

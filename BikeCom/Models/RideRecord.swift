@@ -181,7 +181,7 @@ final class RideStore: ObservableObject {
 
 /// iCloud Documents 컨테이너 접근. 미로그인·권한 없으면 nil → 로컬 폴백.
 enum CloudDocuments {
-    static let containerID = "iCloud.com.jaisungnoh.bikecomputer"
+    static let containerID = "iCloud.com.jaisungnoh.bikecom"
 
     /// iCloud 계정 로그인 여부. 메인 스레드에서 호출.
     static var isAvailable: Bool {

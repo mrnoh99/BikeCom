@@ -26,8 +26,8 @@ struct DevicesView: View {
                 Text("Apple Watch")
             } footer: {
                 Text("""
-                Watch 설치: 1) xcodegen generate  2) Xcode BikeComputer 스킴 → Team 서명 → iPhone Run(⌘R)  \
-                3) iPhone Watch 앱 → 일반 → BikeComputer → 설치 ON  4) 실패 시 iPhone·Watch에서 앱 삭제 후 재설치. \
+                Watch 설치: 1) xcodegen generate  2) Xcode BikeCom 스킴 → Team 서명 → iPhone Run(⌘R)  \
+                3) iPhone Watch 앱 → 일반 → BikeCom → 설치 ON  4) 실패 시 iPhone·Watch에서 앱 삭제 후 재설치. \
                 ./scripts/build.sh 는 서명 없이 빌드만 합니다. \
                 BLE 센서는 워치 설정 > 블루투스에서 페어링하세요.
                 """)

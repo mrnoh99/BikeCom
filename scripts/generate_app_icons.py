@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BikeComputer 앱 아이콘(1024×1024) 생성 — iOS · watchOS."""
+"""BikeCom 앱 아이콘(1024×1024) 생성 — iOS · watchOS."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
-IOS_ICON = ROOT / "BikeComputer/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
-WATCH_ICON = ROOT / "BikeComputerWatch/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+IOS_ICON = ROOT / "BikeCom/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+WATCH_ICON = ROOT / "BikeComWatch/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
 
 # Theme.swift 토큰
 BLACK = (0, 0, 0)
