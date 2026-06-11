@@ -39,12 +39,12 @@ echo "==> 2. iPhone 빌드 (Watch 포함)"
   build
 
 APP=$(find ~/Library/Developer/Xcode/DerivedData -path '*Debug-iphoneos/BikeCom.app' -not -path '*Index*' -newer BikeCom.xcodeproj 2>/dev/null | head -1)
-if [[ -z "$APP" || ! -d "$APP/PlugIns/BikeComWatch.app" ]]; then
+if [[ -z "$APP" || ! -d "$APP/Watch/BikeComWatch.app" ]]; then
   echo "❌ BikeCom.app 또는 Watch companion 없음"
   exit 1
 fi
 echo "   ✓ $APP"
-echo "   ✓ Watch: PlugIns/BikeComWatch.app"
+echo "   ✓ Watch: Watch/BikeComWatch.app"
 
 echo "==> 3. iPhone에 설치"
 if xcrun devicectl device install app --device "$DEVICE_ID" "$APP" 2>/dev/null; then

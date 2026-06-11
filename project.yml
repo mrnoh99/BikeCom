@@ -5,18 +5,27 @@ options:
     iOS: "26.0"
     watchOS: "26.0"
   createIntermediateGroups: true
-  # Xcode 26+: watch 앱은 Watch/ 가 아니라 PlugIns/ 에 임베드해야 한다.
+  # 워치 앱은 iOS 앱 번들의 Watch/ 폴더에 임베드해야 한다("Embed Watch Content",
+  # dstSubfolderSpec=16). PlugIns/ 는 앱 익스텐션 전용이라 워치 앱을 거기 넣으면
+  # iPhone Watch 앱이 워치 콘텐츠로 인식하지 못해 설치가 안 된다.
   postGenCommand: |
-    # Xcode 26: Watch 앱은 PlugIns/ 에 임베드 + CodeSignOnCopy
+    # Watch 임베드: CodeSignOnCopy 보장 + 표준 Watch/ 경로 검증
+    set -e
     sed -i '' \
-      -e 's|dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";|dstPath = "";|' \
-      -e 's|dstSubfolderSpec = 16;|dstSubfolderSpec = 13;|' \
       -e 's|ATTRIBUTES = (RemoveHeadersOnCopy, );|ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, );|' \
       BikeCom.xcodeproj/project.pbxproj
-    grep -q 'dstSubfolderSpec = 13' BikeCom.xcodeproj/project.pbxproj \
-      || (echo "error: Watch embed must use PlugIns (dstSubfolderSpec=13)" && exit 1)
-    grep -q 'CodeSignOnCopy' BikeCom.xcodeproj/project.pbxproj \
-      || (echo "error: Watch embed must use CodeSignOnCopy" && exit 1)
+    if ! grep -qF 'dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";' BikeCom.xcodeproj/project.pbxproj; then
+      echo "error: Embed Watch Content(Watch/ 임베드) 단계가 없습니다 — project.yml 의 워치 dependency 확인"
+      exit 1
+    fi
+    if grep -q 'dstSubfolderSpec = 13' BikeCom.xcodeproj/project.pbxproj; then
+      echo "error: Watch 앱이 PlugIns 로 임베드됨 — iPhone Watch 앱이 인식하지 못해 설치 불가"
+      exit 1
+    fi
+    if ! grep -q 'CodeSignOnCopy' BikeCom.xcodeproj/project.pbxproj; then
+      echo "error: Watch embed must use CodeSignOnCopy"
+      exit 1
+    fi
 
 schemes:
   BikeCom:
@@ -86,19 +95,19 @@ targets:
         INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
         TARGETED_DEVICE_FAMILY: "1"
     dependencies:
+      # 워치 앱 의존성: copy destination 을 지정하지 않아야 XcodeGen 이 표준
+      # "Embed Watch Content"(Watch/) 단계를 만든다 — plugins 로 지정하면 설치 불가.
       - target: BikeComWatch
         embed: true
         codeSign: true
-        copy:
-          destination: plugins
       - package: GoogleMaps
         product: GoogleMaps
     postBuildScripts:
       - name: Verify Watch App Embed
         script: |
-          WATCH_APP="${TARGET_BUILD_DIR}/${WRAPPER_NAME}/PlugIns/BikeComWatch.app"
+          WATCH_APP="${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Watch/BikeComWatch.app"
           if [ ! -d "$WATCH_APP" ]; then
-            echo "error: BikeComWatch.app missing from PlugIns — run xcodegen generate"
+            echo "error: BikeComWatch.app missing from Watch/ — run xcodegen generate"
             exit 1
           fi
           if [ ! -f "$WATCH_APP/Assets.car" ]; then

@@ -132,11 +132,18 @@ BikeComWatch/                  # 애플워치 앱
 > 워치 앱은 아이폰 앱에 **임베드**되어 함께 설치된다(`project.yml` 의 `embed: true`).
 > 두 타깃 모두 **HealthKit Capability** 와 서명 팀이 필요하다(Xcode Signing & Capabilities).
 >
-> ⚠️ **워치 앱이 설치되지 않을 때**: 단일 타깃 워치 앱(Xcode 26)은 `Info.plist` 에
-> `WKApplication = YES` 가 반드시 있어야 한다. 없으면 watchOS 가 구형 WatchKit
-> Extension 구조로 인식해 설치(또는 iPhone Watch 앱에서의 동기화)에 실패한다.
-> 이 키는 `project.yml` 의 워치 `info.properties` 에 정의되어 있고, 빌드 후
-> `postBuildScripts` 가 임베드된 워치 `Info.plist` 에서 값이 `true` 인지 검증한다.
+> ⚠️ **워치 앱이 설치되지 않을 때** — 두 가지가 모두 충족되어야 한다:
+>
+> 1. **임베드 위치 = `Watch/`**: 워치 앱은 iOS 앱 번들의 `Watch/` 폴더에 임베드되는
+>    표준 "Embed Watch Content" 단계(dstSubfolderSpec=16)를 써야 한다. `PlugIns/` 는
+>    앱 익스텐션 전용이라 워치 앱을 거기 넣으면 iPhone Watch 앱이 워치 콘텐츠로
+>    인식하지 못해 설치 항목에 나타나지 않거나 설치에 실패한다.
+> 2. **`WKApplication = YES`**: 단일 타깃 워치 앱(Xcode 26)의 `Info.plist` 필수 키.
+>    없으면 watchOS 가 구형 WatchKit Extension 구조로 인식해 설치에 실패한다.
+>
+> 두 조건 모두 `project.yml` 에 정의되어 있고, `postGenCommand`(Watch/ 임베드·CodeSignOnCopy)와
+> `postBuildScripts`(임베드 경로·아이콘·`WKApplication`)가 빌드 시 자동 검증한다.
+> 빌드 전 반드시 `xcodegen generate` 를 다시 실행할 것.
 
 ## 현재 한계 / 다음 단계
 

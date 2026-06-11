@@ -25,7 +25,7 @@ echo "==> 빌드 (iPhone + Watch)"
   build CODE_SIGNING_ALLOWED=NO
 
 APP=$(find ~/Library/Developer/Xcode/DerivedData -path '*Debug-iphoneos/BikeCom.app' -not -path '*Index*' 2>/dev/null | head -1)
-WATCH="$APP/PlugIns/BikeComWatch.app"
+WATCH="$APP/Watch/BikeComWatch.app"
 
 echo ""
 echo "==> 결과"

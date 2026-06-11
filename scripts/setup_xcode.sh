@@ -41,8 +41,8 @@ if "$XCODEBUILD" \
   -destination 'generic/platform=iOS' \
   build CODE_SIGNING_ALLOWED=NO >/tmp/bike_watch_check.log 2>&1; then
   APP=$(find ~/Library/Developer/Xcode/DerivedData -path '*Debug-iphoneos/BikeCom.app' -not -path '*Index*' 2>/dev/null | head -1)
-  if [[ -n "$APP" && -d "$APP/PlugIns/BikeComWatch.app" ]]; then
-    echo "   ✓ PlugIns/BikeComWatch.app 생성됨"
+  if [[ -n "$APP" && -d "$APP/Watch/BikeComWatch.app" ]]; then
+    echo "   ✓ Watch/BikeComWatch.app 생성됨"
   else
     echo "   ❌ Watch 앱 임베드 실패 — 로그: /tmp/bike_watch_check.log"
     exit 1
@@ -67,7 +67,7 @@ cat <<'EOF'
   4. Signing & Capabilities → BikeCom + BikeComWatch 둘 다 Team 설정
   5. ⌘R Run 후 빌드 로그에 "Build target BikeComWatch" 있는지 확인
 
-Watch 앱은 iPhone 앱 PlugIns 안에 묶여 설치됩니다.
+Watch 앱은 iPhone 앱의 Watch/ 폴더에 묶여 설치됩니다.
 설치 후: iPhone Watch 앱 → 일반 → BikeCom → Apple Watch에 설치 ON
 
 문제 시: ./scripts/check_watch.sh
