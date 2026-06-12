@@ -245,15 +245,14 @@ final class RideSession: ObservableObject {
         }
     }
 
-    /// 라이딩 중(running/paused)에는 화면 자동 잠금을 끈다.
+    /// 앱이 켜져 있는 동안에는 라이딩 여부와 관계없이 항상 화면 자동 잠금을 끈다.
     func refreshScreenAwake() {
         updateScreenAwake()
     }
 
     private func updateScreenAwake() {
-        let keepAwake = state != .idle
         DispatchQueue.main.async {
-            UIApplication.shared.isIdleTimerDisabled = keepAwake
+            UIApplication.shared.isIdleTimerDisabled = true
         }
     }
 
@@ -423,8 +422,8 @@ final class RideSession: ObservableObject {
     private func tick() {
         clock = Date()
 
-        // 주행 중(running/paused)에는 화면 자동 잠금을 매 틱 강제로 끈다.
-        if state != .idle {
+        // 앱이 켜져 있는 동안 매 틱 화면 자동 잠금을 끈다(시스템이 초기화해도 항상 켜짐 유지).
+        if !UIApplication.shared.isIdleTimerDisabled {
             UIApplication.shared.isIdleTimerDisabled = true
         }
 
