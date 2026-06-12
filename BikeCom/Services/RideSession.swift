@@ -303,6 +303,7 @@ final class RideSession: ObservableObject {
         let avgSpeed = rideSeconds > 1 ? distanceMeters / rideSeconds : 0   // 라이딩 시간 기준
         return RideRecord(
             name: routeName,
+            bikeName: bikeName,
             startedAt: started,
             duration: rideSeconds,
             totalElapsed: totalSeconds,

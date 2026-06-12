@@ -72,11 +72,16 @@ enum CSVImporter {
         let avgHR = parseInt(map.value(.avgHR, in: row))
         let maxHR = parseInt(map.value(.maxHR, in: row))
         let maxCad = parseInt(map.value(.maxCadence, in: row) ?? map.value(.avgCadence, in: row))
+        let bike: String? = {
+            let b = map.value(.bike, in: row)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (b?.isEmpty == false && b?.lowercased() != "none") ? b : nil
+        }()
 
         guard isPlausibleRide(distanceMeters: distanceMeters, duration: duration) else { return nil }
 
         return RideRecord(
             name: name,
+            bikeName: bike,
             startedAt: started,
             duration: duration > 0 ? duration : elapsed,
             totalElapsed: elapsed > 0 ? elapsed : duration,
@@ -173,7 +178,7 @@ enum CSVImporter {
 
     private enum Col: CaseIterable {
         case date, start, title, name, activity, distance, time, duration, durationSecs, movingTime, elapsed, stoppedSecs
-        case avgSpeed, maxSpeed, avgHR, maxHR, avgCadence, maxCadence
+        case avgSpeed, maxSpeed, avgHR, maxHR, avgCadence, maxCadence, bike
         case lat, lon, elevation, speed, hr, cadence
     }
 
@@ -223,6 +228,7 @@ enum CSVImporter {
             .maxHR: ["maxhr", "maxheartrate", "maximumheartrate", "heartratemax", "maximumheartratebpm"],
             .avgCadence: ["avgcadence", "averagecadence", "averagecadencerpm"],
             .maxCadence: ["maxcadence", "maxbikecadence", "maximumcadence", "maximumcadencerpm"],
+            .bike: ["bike", "bicycle", "gear"],
             .lat: ["lat", "latitude", "latdeg"],
             .lon: ["lon", "long", "longitude", "lng", "londeg"],
             .elevation: ["ele", "elevation", "alt", "altitude"],

@@ -6,6 +6,7 @@ import CoreLocation
 struct RideRecord: Identifiable, Codable {
     let id: UUID
     var name: String
+    var bikeName: String?              // 자전거 종류(편집 가능, 가져온 기록은 없을 수 있음)
     var startedAt: Date
     var duration: TimeInterval        // 실제 라이딩 시간(정지 제외)
     var totalElapsed: TimeInterval     // 시작~종료 총 경과
@@ -28,12 +29,13 @@ struct RideRecord: Identifiable, Codable {
         var clCoordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lon) }
     }
 
-    init(id: UUID = UUID(), name: String, startedAt: Date, duration: TimeInterval,
+    init(id: UUID = UUID(), name: String, bikeName: String? = nil, startedAt: Date, duration: TimeInterval,
          totalElapsed: TimeInterval, distanceMeters: Double, averageSpeedMps: Double,
          maxSpeedMps: Double, maxHeartRate: Int?, avgHeartRate: Int?, maxCadence: Int?,
          track: [Coordinate]) {
         self.id = id
         self.name = name
+        self.bikeName = bikeName
         self.startedAt = startedAt
         self.duration = duration
         self.totalElapsed = totalElapsed
@@ -87,6 +89,13 @@ final class RideStore: ObservableObject {
     /// 병합 결과 등으로 전체 기록을 교체한다.
     func replaceAll(_ newRecords: [RideRecord]) {
         records = newRecords
+        save()
+    }
+
+    /// id 가 같은 기록을 교체(코스명·자전거 종류 등 편집 반영).
+    func update(_ record: RideRecord) {
+        guard let i = records.firstIndex(where: { $0.id == record.id }) else { return }
+        records[i] = record
         save()
     }
 

@@ -331,16 +331,39 @@ enum RouteGrouping {
 
 /// 라이딩 상세 — 지도 + 핵심 지표.
 struct RideDetailView: View {
-    let record: RideRecord
+    @EnvironmentObject var session: RideSession
+    @Environment(\.dismiss) private var dismiss
     let unit: DistanceUnit
+    @State private var record: RideRecord
     @State private var gpxURL: URL?
+    @State private var showEdit = false
+    @State private var showDeleteConfirm = false
+
+    init(record: RideRecord, unit: DistanceUnit) {
+        _record = State(initialValue: record)
+        self.unit = unit
+    }
+
+    private var coords: [CLLocationCoordinate2D] { record.track.map { $0.clCoordinate } }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                StaticRouteMap(track: record.track.map { $0.clCoordinate })
-                    .frame(height: 260)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                // 1. 지도 — GPX 트랙(경로)이 있으면 코스를 그리고, 없으면 안내.
+                if coords.count > 1 {
+                    StaticRouteMap(track: coords)
+                        .frame(height: 260)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else {
+                    emptyTrackPlaceholder
+                }
+
+                // 코스명 · 자전거
+                VStack(spacing: 4) {
+                    Text(record.name).font(.system(size: 20, weight: .bold))
+                    Text(record.bikeName?.isEmpty == false ? record.bikeName! : "자전거 미지정")
+                        .font(.subheadline).foregroundColor(.secondary)
+                }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     stat("거리", String(format: "%.2f %@", unit.distance(fromMeters: record.distanceMeters), unit.distanceLabel), Theme.gold)
@@ -363,17 +386,67 @@ struct RideDetailView: View {
                     }
                     .padding(.horizontal)
                 }
+
+                // 3. 기록 삭제
+                Button(role: .destructive) { showDeleteConfirm = true } label: {
+                    Label("기록 삭제", systemImage: "trash")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(maxWidth: .infinity).frame(height: 48)
+                        .background(Theme.red.opacity(0.16), in: Capsule())
+                }
+                .tint(Theme.red)
+                .padding(.horizontal)
             }
             .padding(.vertical)
         }
         .navigationTitle(record.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let gpxURL {
-                ShareLink(item: gpxURL) { Image(systemName: "square.and.arrow.up") }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { showEdit = true } label: { Label("코스·자전거 수정", systemImage: "pencil") }
+                    if let gpxURL {
+                        ShareLink(item: gpxURL) { Label("GPX 공유", systemImage: "square.and.arrow.up") }
+                    }
+                    Button(role: .destructive) { showDeleteConfirm = true } label: { Label("기록 삭제", systemImage: "trash") }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
             }
         }
+        // 2. 코스명·자전거 종류 수정
+        .sheet(isPresented: $showEdit) {
+            RideEditSheet(record: record) { updated in
+                session.store.update(updated)
+                record = updated
+                gpxURL = GPXExporter.writeTempGPX(updated)
+            }
+        }
+        // 3. 삭제 확인
+        .confirmationDialog("이 라이딩 기록을 삭제할까요?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("삭제", role: .destructive) {
+                session.store.delete(record)
+                dismiss()
+            }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("삭제하면 목록에서 제거됩니다. (Apple 건강·캘린더 기록은 영향받지 않습니다)")
+        }
         .onAppear { if gpxURL == nil { gpxURL = GPXExporter.writeTempGPX(record) } }
+    }
+
+    private var emptyTrackPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.1))
+            VStack(spacing: 6) {
+                Image(systemName: "map").font(.system(size: 30)).foregroundColor(.secondary)
+                Text("GPX 경로 없음").font(.subheadline).foregroundColor(.secondary)
+                Text("요약만 가져온 기록은 지도에 표시할 좌표가 없습니다.")
+                    .font(.caption2).foregroundColor(.secondary).multilineTextAlignment(.center)
+            }
+            .padding()
+        }
+        .frame(height: 160)
     }
 
     private func stat(_ label: String, _ value: String, _ color: Color) -> some View {
@@ -383,6 +456,64 @@ struct RideDetailView: View {
         }
         .frame(maxWidth: .infinity).padding(.vertical, 14)
         .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// 라이딩 기록의 코스명·자전거 종류 편집 시트.
+struct RideEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let record: RideRecord
+    let onSave: (RideRecord) -> Void
+
+    @State private var name: String
+    @State private var bikeName: String
+
+    init(record: RideRecord, onSave: @escaping (RideRecord) -> Void) {
+        self.record = record
+        self.onSave = onSave
+        _name = State(initialValue: record.name)
+        _bikeName = State(initialValue: record.bikeName ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("코스명") {
+                    TextField("코스 이름", text: $name)
+                }
+                Section("자전거 종류") {
+                    Menu {
+                        ForEach(RideSession.bikePresets, id: \.self) { b in
+                            Button(b) { bikeName = b }
+                        }
+                    } label: {
+                        HStack {
+                            Text("종류 선택")
+                            Spacer()
+                            Text(bikeName.isEmpty ? "미지정" : bikeName).foregroundColor(.secondary)
+                            Image(systemName: "chevron.up.chevron.down").foregroundColor(.secondary)
+                        }
+                    }
+                    TextField("직접 입력", text: $bikeName)
+                }
+            }
+            .navigationTitle("기록 수정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        var updated = record
+                        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        updated.name = trimmed.isEmpty ? record.name : trimmed
+                        let b = bikeName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        updated.bikeName = b.isEmpty ? nil : b
+                        onSave(updated)
+                        dismiss()
+                    }.fontWeight(.semibold)
+                }
+            }
+        }
     }
 }
 
