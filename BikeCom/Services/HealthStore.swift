@@ -15,6 +15,11 @@ final class HealthStore: ObservableObject {
     @Published private(set) var thisYearMeters: Double = 0
     @Published private(set) var totalMeters: Double = 0
 
+    /// Apple 건강의 사이클링 워크아웃 1건(시작 시각 + 라이딩 시간).
+    /// Cyclemeter(JSON) 기록과 합쳐 중복 없이 총 라이딩 시간을 구하는 데 쓴다.
+    struct HealthRide { let start: Date; let duration: TimeInterval }
+    @Published private(set) var rideWorkouts: [HealthRide] = []
+
     /// 건강 권한이 허용되어 누적값을 읽어온 적이 있는지(폴백 판정용).
     @Published private(set) var hasHealthData = false
 
@@ -42,10 +47,12 @@ final class HealthStore: ObservableObject {
     func start() {
         refreshTotals()
         refreshSpO2()
+        refreshWorkouts()
         guard HKHealthStore.isHealthDataAvailable() else { return }
         if observer == nil, let type = distanceType {
             let q = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completion, _ in
                 self?.refreshTotals()
+                self?.refreshWorkouts()
                 completion()
             }
             observer = q
@@ -91,6 +98,24 @@ final class HealthStore: ObservableObject {
             }
         }
         healthStore.execute(q24)
+    }
+
+    /// Apple 건강의 모든 사이클링 워크아웃(시작 시각·라이딩 시간)을 읽어 발행한다.
+    /// HKWorkout.duration 은 일시정지를 제외한 활동 시간이다.
+    func refreshWorkouts() {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        let predicate = HKQuery.predicateForWorkouts(with: .cycling)
+        let q = HKSampleQuery(sampleType: .workoutType(), predicate: predicate,
+                              limit: HKObjectQueryNoLimit, sortDescriptors: nil) { [weak self] _, samples, _ in
+            let rides = (samples as? [HKWorkout])?.map {
+                HealthRide(start: $0.startDate, duration: $0.duration)
+            } ?? []
+            DispatchQueue.main.async {
+                self?.rideWorkouts = rides
+                if !rides.isEmpty { self?.hasHealthData = true }
+            }
+        }
+        healthStore.execute(q)
     }
 
     /// 이번달/올해/총 사이클링 거리(미터)를 다시 집계한다.

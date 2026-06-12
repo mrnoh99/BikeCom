@@ -372,6 +372,14 @@ final class RideSession: ObservableObject {
         return base + inProgress
     }
 
+    /// 총 라이딩 시간(초) — Cyclemeter(로컬 JSON 기록) + Apple 건강 워크아웃을
+    /// 시작 시각·시간 기준으로 중복 제거해 합산한다. 진행 중 라이딩은 실시간으로 더한다.
+    var totalRideTime: TimeInterval {
+        let merged = RideTimeAggregator.totalRideTime(records: store.records,
+                                                      healthRides: health.rideWorkouts)
+        return merged + (state == .idle ? 0 : rideSeconds)
+    }
+
     /// 라이딩 중 평균 심박수(bpm). 표시용 누적 평균.
     var avgHeartRate: Int? {
         guard !heartRateSamples.isEmpty else { return nil }

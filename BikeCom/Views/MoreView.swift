@@ -34,11 +34,20 @@ struct MoreView: View {
                     }
                     TextField("직접 입력", text: $session.bikeName)
                 }
-                Section("누적 통계") {
+                Section {
                     statRow("이번 달", session.thisMonthDistance)
                     statRow("올해", session.thisYearDistance)
                     statRow("전체", session.totalDistance)
+                    HStack {
+                        Text("총 라이딩 시간")
+                        Spacer()
+                        Text(formatDuration(session.totalRideTime)).foregroundColor(Theme.gold)
+                    }
                     HStack { Text("총 라이딩 수"); Spacer(); Text("\(session.store.records.count)").foregroundColor(.secondary) }
+                } header: {
+                    Text("누적 통계")
+                } footer: {
+                    Text("총 라이딩 시간은 Cyclemeter(가져온 JSON 기록)와 Apple 건강의 사이클링 운동을 시작 시각 기준으로 중복 없이 합산합니다.")
                 }
                 Section("센서") {
                     HStack {
