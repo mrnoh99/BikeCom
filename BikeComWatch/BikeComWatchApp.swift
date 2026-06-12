@@ -19,6 +19,7 @@ struct BikeComWatchApp: App {
 final class WatchAppDelegate: NSObject, WKApplicationDelegate {
     func applicationDidFinishLaunching() {
         WorkoutManager.shared.requestAuthorization()
+        WorkoutManager.shared.consumePendingWorkoutCommandIfNeeded()
     }
 
     /// 아이폰에서 라이딩을 시작하면 이 콜백으로 워크아웃 설정이 전달된다.

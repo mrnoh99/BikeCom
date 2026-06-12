@@ -16,7 +16,10 @@ enum RideMetricsStore {
         var avgHeartRate: Int = 0
         var speedMps: Double = 0
         var avgSpeedMps: Double = 0
+        var avgCadenceRPM: Int = 0
         var distanceMeters: Double = 0
+        var speedSensorConnected: Bool = false
+        var cadenceSensorConnected: Bool = false
         var updatedAt: Date = .distantPast
 
         /// 표시용 환산값
@@ -25,9 +28,13 @@ enum RideMetricsStore {
         var distanceKm: Double { distanceMeters / 1000 }
 
         static let placeholder = Snapshot(isRunning: true, heartRate: 138, avgHeartRate: 132,
-                                          speedMps: 7.5, avgSpeedMps: 6.8,
-                                          distanceMeters: 12_300, updatedAt: Date())
+                                          speedMps: 7.5, avgSpeedMps: 6.8, avgCadenceRPM: 86,
+                                          distanceMeters: 12_300,
+                                          speedSensorConnected: true, cadenceSensorConnected: true,
+                                          updatedAt: Date())
     }
+
+    private static let pendingCommandKey = "pendingCommand"
 
     /// 위젯 예산 보호용: reloadAllTimelines 는 최소 간격으로만 호출.
     private static var lastReloadAt: Date = .distantPast
@@ -40,7 +47,10 @@ enum RideMetricsStore {
         d.set(s.avgHeartRate, forKey: "avgHeartRate")
         d.set(s.speedMps, forKey: "speedMps")
         d.set(s.avgSpeedMps, forKey: "avgSpeedMps")
+        d.set(s.avgCadenceRPM, forKey: "avgCadenceRPM")
         d.set(s.distanceMeters, forKey: "distanceMeters")
+        d.set(s.speedSensorConnected, forKey: "speedSensorConnected")
+        d.set(s.cadenceSensorConnected, forKey: "cadenceSensorConnected")
         d.set(s.updatedAt.timeIntervalSince1970, forKey: "updatedAt")
 
         #if canImport(WidgetKit)
@@ -60,8 +70,22 @@ enum RideMetricsStore {
             avgHeartRate: d.integer(forKey: "avgHeartRate"),
             speedMps: d.double(forKey: "speedMps"),
             avgSpeedMps: d.double(forKey: "avgSpeedMps"),
+            avgCadenceRPM: d.integer(forKey: "avgCadenceRPM"),
             distanceMeters: d.double(forKey: "distanceMeters"),
+            speedSensorConnected: d.bool(forKey: "speedSensorConnected"),
+            cadenceSensorConnected: d.bool(forKey: "cadenceSensorConnected"),
             updatedAt: Date(timeIntervalSince1970: d.double(forKey: "updatedAt"))
         )
+    }
+
+    /// 컴플리케이션 시작/정지 버튼 → 워치 앱이 소비한다.
+    static func setPendingCommand(_ command: String) {
+        defaults?.set(command, forKey: pendingCommandKey)
+    }
+
+    static func consumePendingCommand() -> String? {
+        guard let cmd = defaults?.string(forKey: pendingCommandKey) else { return nil }
+        defaults?.removeObject(forKey: pendingCommandKey)
+        return cmd
     }
 }
