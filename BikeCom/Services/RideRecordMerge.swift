@@ -16,6 +16,12 @@ enum RideRecordMerge {
         }
         return byStart.values.sorted { $0.startedAt > $1.startedAt }
     }
+
+    /// 두 기록이 같은 라이딩인지(소스가 달라도). 시작 시각 ±180초 + 라이딩 시간 ±120초.
+    static func isDuplicate(_ a: RideRecord, of b: RideRecord) -> Bool {
+        abs(a.startedAt.timeIntervalSince(b.startedAt)) <= 180 &&
+        abs(a.duration - b.duration) <= 120
+    }
 }
 
 /// Cyclemeter(JSON 기록)와 Apple 건강 워크아웃을 합쳐 **중복 없이** 총 라이딩 시간을 구한다.

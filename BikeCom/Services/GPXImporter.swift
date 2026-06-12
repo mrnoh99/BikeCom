@@ -48,6 +48,7 @@ enum GPXImporter {
 
         return RideRecord(
             name: parser.name ?? fallbackName,
+            source: .gpx,
             startedAt: start,
             duration: duration,
             totalElapsed: total,

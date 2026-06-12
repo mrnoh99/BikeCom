@@ -80,6 +80,7 @@ final class HealthWorkoutImporter {
 
             let record = RideRecord(
                 name: name,
+                source: .health,
                 startedAt: w.startDate,
                 duration: duration,
                 totalElapsed: total,

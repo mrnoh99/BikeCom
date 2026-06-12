@@ -2,11 +2,20 @@ import Foundation
 import Combine
 import CoreLocation
 
+/// 라이딩 기록의 출처(통합 정리 시 우선순위: app > health > cyclemeter).
+enum RideSource: String, Codable {
+    case app        // 앱에서 직접 Start→Done
+    case health     // Apple 건강에서 가져옴
+    case cyclemeter // Cyclemeter 요약 CSV
+    case gpx        // GPX 파일 가져옴
+}
+
 /// 완료된 라이딩 1건. Routes 탭과 누적 통계(이번달/올해/총) 계산에 쓰인다.
 struct RideRecord: Identifiable, Codable {
     let id: UUID
     var name: String
     var bikeName: String?              // 자전거 종류(편집 가능, 가져온 기록은 없을 수 있음)
+    var source: RideSource?            // 데이터 출처(통합 정리 우선순위용; 레거시는 nil)
     var startedAt: Date
     var duration: TimeInterval        // 실제 라이딩 시간(정지 제외)
     var totalElapsed: TimeInterval     // 시작~종료 총 경과
@@ -29,13 +38,15 @@ struct RideRecord: Identifiable, Codable {
         var clCoordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lon) }
     }
 
-    init(id: UUID = UUID(), name: String, bikeName: String? = nil, startedAt: Date, duration: TimeInterval,
+    init(id: UUID = UUID(), name: String, bikeName: String? = nil, source: RideSource? = nil,
+         startedAt: Date, duration: TimeInterval,
          totalElapsed: TimeInterval, distanceMeters: Double, averageSpeedMps: Double,
          maxSpeedMps: Double, maxHeartRate: Int?, avgHeartRate: Int?, maxCadence: Int?,
          track: [Coordinate]) {
         self.id = id
         self.name = name
         self.bikeName = bikeName
+        self.source = source
         self.startedAt = startedAt
         self.duration = duration
         self.totalElapsed = totalElapsed

@@ -82,6 +82,7 @@ enum CSVImporter {
         return RideRecord(
             name: name,
             bikeName: bike,
+            source: .cyclemeter,
             startedAt: started,
             duration: duration > 0 ? duration : elapsed,
             totalElapsed: elapsed > 0 ? elapsed : duration,
@@ -162,6 +163,7 @@ enum CSVImporter {
 
         return RideRecord(
             name: fallbackName,
+            source: .gpx,
             startedAt: start,
             duration: duration,
             totalElapsed: total,

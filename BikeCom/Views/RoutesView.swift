@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 import UIKit
 import Charts
+import UniformTypeIdentifiers
 
 /// 라이딩 목록 정렬 기준.
 enum RideSort: String, CaseIterable, Identifiable {
@@ -29,9 +30,17 @@ private let routeDateFormatter: DateFormatter = {
 struct RideRow: View {
     let record: RideRecord
     let unit: DistanceUnit
+    private var hasGPS: Bool { record.track.count > 1 }
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(record.name).font(.system(size: 16, weight: .semibold))
+            HStack(spacing: 6) {
+                Text(record.name).font(.system(size: 16, weight: .semibold))
+                Spacer(minLength: 0)
+                // GPS 유무 표시
+                Image(systemName: hasGPS ? "mappin.and.ellipse" : "mappin.slash")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(hasGPS ? Theme.green : .secondary)
+            }
             HStack(spacing: 14) {
                 Label(String(format: "%.2f %@", unit.distance(fromMeters: record.distanceMeters), unit.distanceLabel),
                       systemImage: "ruler")
@@ -50,7 +59,15 @@ struct RoutesView: View {
     @EnvironmentObject var session: RideSession
     @State private var sort: RideSort = .newest
     @State private var grouped = false
+    @State private var showImporter = false
+    @State private var showConsolidateConfirm = false
     @AppStorage("route.bucketMeters") private var bucketMeters: Double = 250
+
+    private var importTypes: [UTType] {
+        [UTType(filenameExtension: "gpx") ?? .xml,
+         UTType(filenameExtension: "csv") ?? .commaSeparatedText,
+         .xml, .commaSeparatedText, .folder]
+    }
 
     var body: some View {
         Group {
@@ -64,7 +81,9 @@ struct RoutesView: View {
         }
         .navigationTitle("Routes")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top) { statusBanner }
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) { dataMenu }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Picker("정렬", selection: $sort) {
@@ -76,6 +95,44 @@ struct RoutesView: View {
                     Image(systemName: "line.3.horizontal.decrease.circle")
                 }
             }
+        }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: importTypes,
+                      allowsMultipleSelection: true) { result in
+            if case .success(let urls) = result { session.importRideFiles(from: urls) }
+        }
+        .confirmationDialog("기록 통합 정리", isPresented: $showConsolidateConfirm, titleVisibility: .visible) {
+            Button("정리 실행 (5km 이하 삭제)", role: .destructive) { session.consolidateRoutes() }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("앱 직접 기록 → Apple 건강 → Cyclemeter 순으로 중복 없이 채우고, 주행거리 5km 이하 라이딩을 일괄 삭제합니다.")
+        }
+    }
+
+    // 데이터 가져오기/정리 메뉴 (라이딩 기록 첫 페이지)
+    private var dataMenu: some View {
+        Menu {
+            Button { session.importStatus = nil; showConsolidateConfirm = true } label: {
+                Label("기록 통합 정리", systemImage: "arrow.triangle.merge")
+            }
+            Divider()
+            Button { session.importStatus = nil; session.importFromHealth() } label: {
+                Label("Apple 건강에서 가져오기", systemImage: "heart.text.square")
+            }
+            Button { session.importStatus = nil; showImporter = true } label: {
+                Label("GPX / CSV 파일 가져오기", systemImage: "square.and.arrow.down")
+            }
+        } label: {
+            Image(systemName: "tray.and.arrow.down")
+        }
+    }
+
+    @ViewBuilder private var statusBanner: some View {
+        if let status = session.importStatus {
+            Text(status)
+                .font(.caption).foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal).padding(.vertical, 6)
+                .background(.ultraThinMaterial)
         }
     }
 

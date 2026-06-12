@@ -1,18 +1,8 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// More 탭 — 센서·정보·데이터 가져오기 등 기타 설정.
+/// More 탭 — 센서·정보 등 기타 설정. (데이터 가져오기/정리는 Routes 첫 페이지로 이동)
 struct MoreView: View {
     @EnvironmentObject var session: RideSession
-    @State private var showImporter = false
-
-    private var importTypes: [UTType] {
-        [
-            UTType(filenameExtension: "gpx") ?? .xml,
-            UTType(filenameExtension: "csv") ?? .commaSeparatedText,
-            .xml, .commaSeparatedText, .folder
-        ]
-    }
 
     var body: some View {
         List {
@@ -76,40 +66,14 @@ struct MoreView: View {
                     }
                 }
                 Section {
-                    Button {
-                        session.importStatus = nil
-                        session.importFromHealth()
-                    } label: {
-                        Label("Apple 건강에서 가져오기", systemImage: "heart.text.square")
-                    }
-                    Button {
-                        session.importStatus = nil
-                        showImporter = true
-                    } label: {
-                        Label("GPX / CSV 파일 가져오기", systemImage: "square.and.arrow.down")
-                    }
-                    if let status = session.importStatus {
-                        Text(status).font(.caption).foregroundColor(.secondary)
-                    }
-                } header: {
-                    Text("데이터 가져오기")
-                } footer: {
-                    Text("Apple 건강에 있는 사이클링 운동은 '건강에서 가져오기'를 사용하세요. Cyclemeter 등에서 내보낸 GPX·CSV(요약 목록 또는 좌표 열) 파일·폴더를 선택하면 Routes에 추가됩니다. 같은 시작 시각은 중복 제외됩니다.")
-                }
-                Section {
                     HStack { Text("버전"); Spacer(); Text("1.0").foregroundColor(.secondary) }
                     HStack { Text("디자인"); Spacer(); Text("Designed by Jaisung NOH MD 2026").foregroundColor(.secondary) }
                 } footer: {
-                    Text("속도·케이던스는 워치에 페어링한 BLE 센서(워치 설정 > 블루투스)만 사용합니다. 아이폰은 센서에 직접 연결하지 않고, 거리·경로는 GPS 로 기록합니다.")
+                    Text("데이터 가져오기·기록 통합 정리는 Routes(라이딩 기록) 첫 페이지의 ⤓ 메뉴로 옮겼습니다. 속도·케이던스는 워치에 페어링한 BLE 센서만 사용합니다.")
                 }
             }
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(isPresented: $showImporter,
-                          allowedContentTypes: importTypes,
-                          allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result { session.importRideFiles(from: urls) }
-            }
     }
 
     private func statRow(_ label: String, _ value: Double) -> some View {
