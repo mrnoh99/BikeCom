@@ -55,8 +55,12 @@ enum CSVImporter {
             ?? parseDuration(map.value(.time, in: row))
             ?? parseDuration(map.value(.movingTime, in: row))
             ?? 0
-        let stopped = parseDurationSeconds(map.value(.stoppedSecs, in: row)) ?? 0
-        let elapsed = parseDuration(map.value(.elapsed, in: row)) ?? (duration + stopped)
+        var stopped = parseDurationSeconds(map.value(.stoppedSecs, in: row)) ?? 0
+        // 일부 Cyclemeter 내보내기는 Stopped Time 값이 손상돼 비현실적으로 크다(수억 초).
+        // 라이딩 시간(duration)에는 영향 없지만 총 경과가 터무니없어지므로 무시한다.
+        if !(0...(86400 * 14)).contains(stopped) { stopped = 0 }
+        var elapsed = parseDuration(map.value(.elapsed, in: row)) ?? (duration + stopped)
+        if !(0...(86400 * 14)).contains(elapsed) { elapsed = duration + stopped }
 
         let speedHeader = map.header(.avgSpeed, in: headers) ?? map.header(.maxSpeed, in: headers) ?? ""
         var avgSpeed = parseSpeed(map.value(.avgSpeed, in: row), header: speedHeader)
