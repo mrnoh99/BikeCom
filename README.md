@@ -131,6 +131,21 @@ BikeComWatch/                  # 애플워치 앱
 
 > 워치 앱은 아이폰 앱에 **임베드**되어 함께 설치된다(`project.yml` 의 `embed: true`).
 > 두 타깃 모두 **HealthKit Capability** 와 서명 팀이 필요하다(Xcode Signing & Capabilities).
+
+### 워치 화면 · 컴플리케이션
+
+- **워치 주행화면**(`WatchContentView`): 실시간 **심박수**, **속도·케이던스 센서 연결 상태**(초록/회색 배지),
+  **평균 속도·평균 심박·주행거리**, 시작/정지, 휴식 중 SpO2 측정.
+- **워치 컴플리케이션**(`BikeComWatchWidget`, WidgetKit accessory): 최근 심박·평균속도·주행거리를
+  표시하고 탭하면 앱을 연다. `accessoryCircular/Inline/Corner/Rectangular` 지원. 워치 앱과는
+  **App Group**(`group.com.jaisungnoh.bikecom`) 공유 저장소(`RideMetricsStore`)로 지표를 주고받으며,
+  워크아웃 중 워치가 값을 쓰면 `WidgetCenter.reloadAllTimelines()` 로 갱신된다(예산 보호 위해 20초 간격).
+  컴플리케이션은 **워치 앱의 PlugIns 에 임베드**되는 익스텐션이다(워치 앱 본체는 iOS 앱의 `Watch/` 에 임베드).
+- **아이폰 주행 중 화면 꺼짐 방지**: 라이딩 상태(`state != .idle`)에서 `isIdleTimerDisabled = true` 를
+  상태 전환 시 + 매 틱 재확인해 시스템이 초기화해도 화면이 꺼지지 않는다.
+
+> App Group 을 쓰므로 **워치 앱·컴플리케이션 두 타깃의 Signing & Capabilities 에 App Groups
+> (`group.com.jaisungnoh.bikecom`)** 를 추가해야 한다(자동 서명이면 Xcode 가 프로비저닝 처리).
 >
 > ⚠️ **워치 앱이 설치되지 않을 때** — 두 가지가 모두 충족되어야 한다:
 >

@@ -13,12 +13,25 @@ final class WorkoutManager: NSObject, ObservableObject {
     @Published var spo2: Int = 0
     @Published var measuringSpO2 = false
 
+    // 주행 지표(워치 화면·컴플리케이션 표시용)
+    @Published var avgHeartRate: Int = 0
+    @Published var speedMps: Double = 0
+    @Published var avgSpeedMps: Double = 0
+    @Published var distanceMeters: Double = 0
+    @Published var speedSensorConnected = false
+    @Published var cadenceSensorConnected = false
+
     private let healthStore = HKHealthStore()
     private var session: HKWorkoutSession?
     private var builder: HKLiveWorkoutBuilder?
     private var spo2Query: HKQuery?
     private var heartRateQuery: HKAnchoredObjectQuery?
     private var relayTimer: Timer?
+
+    // 센서 신선도(최근 샘플 수신 시각) — 연결 상태 판정용
+    private let sensorFreshness: TimeInterval = 5
+    private var lastSpeedSampleAt: Date?
+    private var lastCadenceSampleAt: Date?
 
     private var latestSpeedMps: Double?
     private var latestCadenceRPM: Int?
@@ -117,7 +130,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             let s = try HKWorkoutSession(healthStore: healthStore, configuration: config)
             let b = s.associatedWorkoutBuilder()
             let dataSource = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: config)
-            for id in [HKQuantityTypeIdentifier.heartRate, .cyclingSpeed, .cyclingCadence] {
+            for id in [HKQuantityTypeIdentifier.heartRate, .cyclingSpeed, .cyclingCadence, .distanceCycling] {
                 if let t = HKQuantityType.quantityType(forIdentifier: id) {
                     dataSource.enableCollection(for: t, predicate: nil)
                 }
@@ -129,6 +142,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             builder = b
             latestSpeedMps = nil
             latestCadenceRPM = nil
+            resetRideMetrics()
 
             let startDate = Date()
             s.startActivity(with: startDate)
@@ -141,6 +155,7 @@ final class WorkoutManager: NSObject, ObservableObject {
                 DispatchQueue.main.async {
                     self.isRunning = true
                     self.startRelayTimer()
+                    self.persistSnapshot(forceReload: true)
                 }
                 self.startHeartRateQuery(from: startDate)
                 self.send(["workoutStarted": success])
@@ -168,7 +183,15 @@ final class WorkoutManager: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.isRunning = false
             self.heartRate = 0
+            self.speedMps = 0
+            self.speedSensorConnected = false
+            self.cadenceSensorConnected = false
         }
+        // 종료 스냅샷(주행 종료 표시) 즉시 반영 → 컴플리케이션 갱신.
+        var snap = RideMetricsStore.load()
+        snap.isRunning = false
+        snap.updatedAt = Date()
+        RideMetricsStore.save(snap, forceReload: true)
     }
 
     private func startHeartRateQuery(from startDate: Date) {
@@ -205,7 +228,47 @@ final class WorkoutManager: NSObject, ObservableObject {
     private func startRelayTimer() {
         stopRelayTimer()
         relayTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.refreshSensorFlagsAndPersist()
             self?.sendMetricsToPhone()
+        }
+    }
+
+    /// 최근 샘플 수신 여부로 속도·케이던스 센서 연결 상태를 갱신하고
+    /// 공유 저장소(App Group)에 최신 지표를 기록한다(컴플리케이션 표시용).
+    private func refreshSensorFlagsAndPersist() {
+        let now = Date()
+        let speedOn = lastSpeedSampleAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
+        let cadOn = lastCadenceSampleAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
+        DispatchQueue.main.async {
+            self.speedSensorConnected = speedOn
+            self.cadenceSensorConnected = cadOn
+        }
+        persistSnapshot()
+    }
+
+    private func persistSnapshot(forceReload: Bool = false) {
+        let snap = RideMetricsStore.Snapshot(
+            isRunning: isRunning,
+            heartRate: heartRate,
+            avgHeartRate: avgHeartRate,
+            speedMps: speedMps,
+            avgSpeedMps: avgSpeedMps,
+            distanceMeters: distanceMeters,
+            updatedAt: Date()
+        )
+        RideMetricsStore.save(snap, forceReload: forceReload)
+    }
+
+    private func resetRideMetrics() {
+        lastSpeedSampleAt = nil
+        lastCadenceSampleAt = nil
+        DispatchQueue.main.async {
+            self.avgHeartRate = 0
+            self.speedMps = 0
+            self.avgSpeedMps = 0
+            self.distanceMeters = 0
+            self.speedSensorConnected = false
+            self.cadenceSensorConnected = false
         }
     }
 
@@ -277,26 +340,59 @@ extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
 
     func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder,
                         didCollectDataOf collectedTypes: Set<HKSampleType>) {
+        let mps = HKUnit.meter().unitDivided(by: .second())
+        let bpmUnit = HKUnit.count().unitDivided(by: .minute())
+
         if let hrType = HKQuantityType.quantityType(forIdentifier: .heartRate),
-           collectedTypes.contains(hrType),
-           let q = workoutBuilder.statistics(for: hrType)?.mostRecentQuantity() {
-            let bpm = Int(q.doubleValue(for: .count().unitDivided(by: .minute())).rounded())
-            if bpm > 0 {
-                DispatchQueue.main.async { self.heartRate = bpm }
+           collectedTypes.contains(hrType) {
+            let stats = workoutBuilder.statistics(for: hrType)
+            if let q = stats?.mostRecentQuantity() {
+                let bpm = Int(q.doubleValue(for: bpmUnit).rounded())
+                if bpm > 0 { DispatchQueue.main.async { self.heartRate = bpm } }
+            }
+            if let avg = stats?.averageQuantity() {
+                let avgBpm = Int(avg.doubleValue(for: bpmUnit).rounded())
+                DispatchQueue.main.async { self.avgHeartRate = avgBpm }
             }
         }
 
         if let spType = HKQuantityType.quantityType(forIdentifier: .cyclingSpeed),
-           collectedTypes.contains(spType),
-           let q = workoutBuilder.statistics(for: spType)?.mostRecentQuantity() {
-            latestSpeedMps = q.doubleValue(for: .meter().unitDivided(by: .second()))
+           collectedTypes.contains(spType) {
+            let stats = workoutBuilder.statistics(for: spType)
+            if let q = stats?.mostRecentQuantity() {
+                latestSpeedMps = q.doubleValue(for: mps)
+                lastSpeedSampleAt = Date()
+                let cur = latestSpeedMps ?? 0
+                DispatchQueue.main.async { self.speedMps = cur }
+            }
+            if let avg = stats?.averageQuantity() {
+                let v = avg.doubleValue(for: mps)
+                DispatchQueue.main.async { self.avgSpeedMps = v }
+            }
         }
         if let cadType = HKQuantityType.quantityType(forIdentifier: .cyclingCadence),
            collectedTypes.contains(cadType),
            let q = workoutBuilder.statistics(for: cadType)?.mostRecentQuantity() {
-            latestCadenceRPM = Int(q.doubleValue(for: .count().unitDivided(by: .minute())).rounded())
+            latestCadenceRPM = Int(q.doubleValue(for: bpmUnit).rounded())
+            lastCadenceSampleAt = Date()
+        }
+        var totalMeters: Double?
+        if let dType = HKQuantityType.quantityType(forIdentifier: .distanceCycling),
+           collectedTypes.contains(dType),
+           let q = workoutBuilder.statistics(for: dType)?.sumQuantity() {
+            let meters = q.doubleValue(for: .meter())
+            totalMeters = meters
+            DispatchQueue.main.async { self.distanceMeters = meters }
         }
 
+        // 평균 속도 보강: 속도 센서가 없어도 거리/경과시간으로 평균을 추정.
+        let elapsed = workoutBuilder.elapsedTime
+        if elapsed > 1, let dm = totalMeters {
+            let derived = dm / elapsed
+            DispatchQueue.main.async { if self.avgSpeedMps == 0 { self.avgSpeedMps = derived } }
+        }
+
+        refreshSensorFlagsAndPersist()
         sendMetricsToPhone()
     }
 }

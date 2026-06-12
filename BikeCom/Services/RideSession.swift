@@ -402,6 +402,12 @@ final class RideSession: ObservableObject {
     private func tick() {
         clock = Date()
 
+        // 주행 중에는 화면 자동 잠금을 매 틱 재확인해 끈다(시스템이 간헐적으로
+        // idle timer 를 초기화해 주행 중 화면이 꺼지는 것을 방지).
+        if state != .idle, !UIApplication.shared.isIdleTimerDisabled {
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
+
         // 자동 재개: 자동 일시정지 상태에서 바퀴가 다시 구르면(임계 이상) 재개.
         if state == .paused, autoPaused, autoPauseEnabled, currentSpeedMps >= autoPauseThresholdMps {
             location.resumeRecording()

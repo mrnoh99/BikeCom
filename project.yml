@@ -14,12 +14,11 @@ options:
     sed -i '' \
       -e 's|ATTRIBUTES = (RemoveHeadersOnCopy, );|ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, );|' \
       BikeCom.xcodeproj/project.pbxproj
+    # 워치 앱은 반드시 iOS 앱의 Watch/ 에 임베드돼야 한다(PlugIns 면 설치 불가).
+    # 단, 워치 컴플리케이션(위젯 익스텐션)은 워치 앱 PlugIns 에 들어가는 게 정상이므로
+    # dstSubfolderSpec=13 자체를 금지하지 않고, Watch/ 임베드 존재만 확인한다.
     if ! grep -qF 'dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";' BikeCom.xcodeproj/project.pbxproj; then
       echo "error: Embed Watch Content(Watch/ 임베드) 단계가 없습니다 — project.yml 의 워치 dependency 확인"
-      exit 1
-    fi
-    if grep -q 'dstSubfolderSpec = 13' BikeCom.xcodeproj/project.pbxproj; then
-      echo "error: Watch 앱이 PlugIns 로 임베드됨 — iPhone Watch 앱이 인식하지 못해 설치 불가"
       exit 1
     fi
     if ! grep -q 'CodeSignOnCopy' BikeCom.xcodeproj/project.pbxproj; then
@@ -129,6 +128,7 @@ targets:
     platform: watchOS
     sources:
       - path: BikeComWatch
+      - path: BikeComShared
     info:
       path: BikeComWatch/Info.plist
       properties:
@@ -149,4 +149,29 @@ targets:
         CODE_SIGN_ENTITLEMENTS: BikeComWatch/BikeComWatch.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        TARGETED_DEVICE_FAMILY: "4"
+    dependencies:
+      # 워치 컴플리케이션(위젯 익스텐션)은 워치 앱 PlugIns 에 임베드된다(익스텐션 정상 위치).
+      - target: BikeComWatchWidget
+        embed: true
+        codeSign: true
+
+  # 애플워치 컴플리케이션 (WidgetKit accessory) — 워치 앱에 임베드
+  BikeComWatchWidget:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: BikeComWatchWidget
+      - path: BikeComShared
+    info:
+      path: BikeComWatchWidget/Info.plist
+      properties:
+        CFBundleDisplayName: BikeCom
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaisungnoh.bikecom.watchkitapp.widget
+        INFOPLIST_FILE: BikeComWatchWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: BikeComWatchWidget/BikeComWatchWidget.entitlements
         TARGETED_DEVICE_FAMILY: "4"
