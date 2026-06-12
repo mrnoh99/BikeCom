@@ -175,4 +175,5 @@ targets:
         INFOPLIST_FILE: BikeComWatchWidget/Info.plist
         CODE_SIGN_ENTITLEMENTS: BikeComWatchWidget/BikeComWatchWidget.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         TARGETED_DEVICE_FAMILY: "4"

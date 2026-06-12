@@ -19,6 +19,7 @@ final class WorkoutManager: NSObject, ObservableObject {
     @Published var avgSpeedMps: Double = 0
     @Published var avgCadenceRPM: Int = 0
     @Published var distanceMeters: Double = 0
+    @Published var elapsedSeconds: TimeInterval = 0
     @Published var speedSensorConnected = false
     @Published var cadenceSensorConnected = false
 
@@ -198,6 +199,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             self.speedMps = 0
             self.speedSensorConnected = false
             self.cadenceSensorConnected = false
+            self.elapsedSeconds = 0
         }
         // 종료 스냅샷(주행 종료 표시) 즉시 반영 → 컴플리케이션 갱신.
         var snap = RideMetricsStore.load()
@@ -239,9 +241,13 @@ final class WorkoutManager: NSObject, ObservableObject {
 
     private func startRelayTimer() {
         stopRelayTimer()
-        relayTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.refreshSensorFlagsAndPersist()
-            self?.sendMetricsToPhone()
+        relayTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            if let elapsed = self.builder?.elapsedTime {
+                DispatchQueue.main.async { self.elapsedSeconds = elapsed }
+            }
+            self.refreshSensorFlagsAndPersist()
+            self.sendMetricsToPhone()
         }
     }
 
@@ -286,6 +292,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             self.avgSpeedMps = 0
             self.avgCadenceRPM = 0
             self.distanceMeters = 0
+            self.elapsedSeconds = 0
             self.speedSensorConnected = false
             self.cadenceSensorConnected = false
         }

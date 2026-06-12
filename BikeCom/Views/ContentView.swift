@@ -15,6 +15,7 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .onAppear { session.refreshScreenAwake() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { session.refreshScreenAwake() }
         }
