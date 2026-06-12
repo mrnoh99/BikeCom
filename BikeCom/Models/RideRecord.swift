@@ -84,6 +84,12 @@ final class RideStore: ObservableObject {
         save()
     }
 
+    /// 병합 결과 등으로 전체 기록을 교체한다.
+    func replaceAll(_ newRecords: [RideRecord]) {
+        records = newRecords
+        save()
+    }
+
     func delete(_ record: RideRecord) {
         records.removeAll { $0.id == record.id }
         save()

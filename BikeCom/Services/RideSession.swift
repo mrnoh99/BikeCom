@@ -58,19 +58,22 @@ final class RideSession: ObservableObject {
     @Published var saveSummary: String?
 
     /// Apple 건강의 사이클링 워크아웃(경로·심박 포함)을 Routes 로 가져온다.
+    /// 같은 시작 시각의 기록은 Health 데이터로 교체한다.
     func importFromHealth() {
         importStatus = "건강에서 가져오는 중…"
         healthImporter.importCyclingWorkouts { [weak self] records in
             guard let self else { return }
-            let existing = Set(self.store.records.map { Int($0.startedAt.timeIntervalSince1970) })
-            let fresh = records.filter { !existing.contains(Int($0.startedAt.timeIntervalSince1970)) }
-            self.store.addMany(fresh)
-            self.importStatus = "건강에서 가져오기 완료: \(fresh.count)개 추가 (워크아웃 \(records.count)개)"
+            let existingKeys = Set(self.store.records.map { RideRecordMerge.startKey(for: $0.startedAt) })
+            let replaced = records.filter { existingKeys.contains(RideRecordMerge.startKey(for: $0.startedAt)) }.count
+            let added = records.count - replaced
+            let merged = RideRecordMerge.merge(existing: self.store.records, incoming: records, incomingWins: true)
+            self.store.replaceAll(merged)
+            self.importStatus = "건강에서 가져오기 완료: \(added)개 추가, \(replaced)개 갱신 (워크아웃 \(records.count)개)"
         }
     }
 
-    /// 선택한 GPX 파일/폴더(들)에서 라이딩을 일괄 가져온다(Cyclemeter 마이그레이션).
-    func importGPX(from urls: [URL]) {
+    /// 선택한 GPX·CSV 파일/폴더(들)에서 라이딩을 일괄 가져온다.
+    func importRideFiles(from urls: [URL]) {
         importStatus = "가져오는 중…"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
@@ -84,20 +87,30 @@ final class RideSession: ObservableObject {
                 var files: [URL] = []
                 if isDir.boolValue {
                     if let en = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil) {
-                        for case let f as URL in en where f.pathExtension.lowercased() == "gpx" { files.append(f) }
+                        for case let f as URL in en {
+                            let ext = f.pathExtension.lowercased()
+                            if ext == "gpx" || ext == "csv" { files.append(f) }
+                        }
                     }
                 } else {
                     files = [url]
                 }
                 for f in files {
-                    if let data = try? Data(contentsOf: f),
-                       let rec = GPXImporter.parse(data: data, fallbackName: f.deletingPathExtension().lastPathComponent) {
-                        parsed.append(rec)
+                    guard let data = try? Data(contentsOf: f) else { continue }
+                    let name = f.deletingPathExtension().lastPathComponent
+                    switch f.pathExtension.lowercased() {
+                    case "gpx":
+                        if let rec = GPXImporter.parse(data: data, fallbackName: name) {
+                            parsed.append(rec)
+                        }
+                    case "csv":
+                        parsed.append(contentsOf: CSVImporter.parse(data: data, fallbackName: name))
+                    default:
+                        break
                     }
                 }
             }
             DispatchQueue.main.async {
-                // 시작시각(초)이 같은 기존 기록은 중복으로 보고 건너뛴다.
                 let existing = Set(self.store.records.map { Int($0.startedAt.timeIntervalSince1970) })
                 let fresh = parsed.filter { !existing.contains(Int($0.startedAt.timeIntervalSince1970)) }
                 self.store.addMany(fresh)
@@ -105,6 +118,8 @@ final class RideSession: ObservableObject {
             }
         }
     }
+
+    func importGPX(from urls: [URL]) { importRideFiles(from: urls) }
 
     // 라벨(스크린샷의 "1.출근길" / "6.Yeti" 자리)
     @Published var routeName: String = UserDefaults.standard.string(forKey: "bike.routeName") ?? "1.라이딩"
@@ -212,6 +227,28 @@ final class RideSession: ObservableObject {
         location.requestAuthorization()
         watch.requestAuthorization()
         health.start()   // Apple Health 누적 거리 관찰 시작
+        importBaselineHistoryIfNeeded()
+    }
+
+    private static let baselineImportedKey = "bike.cyclemeterBaselineV1"
+
+    /// 앱 번들 Cyclemeter CSV 를 1회 주입한다. Health 와 같은 시작 시각은 Health 가 우선한다.
+    private func importBaselineHistoryIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.baselineImportedKey) else { return }
+        guard let url = Bundle.main.url(forResource: "CyclemeterBaseline", withExtension: "csv") else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self, let data = try? Data(contentsOf: url) else { return }
+            let baseline = CSVImporter.parse(data: data, fallbackName: "Cyclemeter")
+            guard !baseline.isEmpty else { return }
+            DispatchQueue.main.async {
+                let merged = RideRecordMerge.merge(
+                    existing: self.store.records,
+                    incoming: baseline,
+                    incomingWins: false)
+                self.store.replaceAll(merged)
+                UserDefaults.standard.set(true, forKey: Self.baselineImportedKey)
+            }
+        }
     }
 
     deinit {

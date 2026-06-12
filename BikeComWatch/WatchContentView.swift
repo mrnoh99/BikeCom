@@ -56,14 +56,19 @@ struct WatchContentView: View {
 
             Spacer(minLength: 2)
 
-            Button {
-                workout.isRunning ? workout.stopWorkout() : workout.startWorkout()
-            } label: {
-                Text(workout.isRunning ? "정지" : "시작")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(maxWidth: .infinity)
+            HStack {
+                Spacer(minLength: 0)
+                Button {
+                    workout.isRunning ? workout.stopWorkout() : workout.startWorkout()
+                } label: {
+                    Text(workout.isRunning ? "정지" : "시작")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(minWidth: 88)
+                }
+                .tint(workout.isRunning ? .red : .green)
+                Spacer(minLength: 0)
             }
-            .tint(workout.isRunning ? .red : .green)
+            .frame(maxWidth: .infinity)
         }
         .padding(.leading, WorkoutScreenStyle.leadingInset)
         .padding(.trailing, 4)

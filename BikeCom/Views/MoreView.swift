@@ -6,8 +6,12 @@ struct MoreView: View {
     @EnvironmentObject var session: RideSession
     @State private var showImporter = false
 
-    private var gpxTypes: [UTType] {
-        [UTType(filenameExtension: "gpx") ?? .xml, .xml, .folder]
+    private var importTypes: [UTType] {
+        [
+            UTType(filenameExtension: "gpx") ?? .xml,
+            UTType(filenameExtension: "csv") ?? .commaSeparatedText,
+            .xml, .commaSeparatedText, .folder
+        ]
     }
 
     var body: some View {
@@ -73,7 +77,7 @@ struct MoreView: View {
                         session.importStatus = nil
                         showImporter = true
                     } label: {
-                        Label("Cyclemeter GPX 가져오기", systemImage: "square.and.arrow.down")
+                        Label("GPX / CSV 파일 가져오기", systemImage: "square.and.arrow.down")
                     }
                     if let status = session.importStatus {
                         Text(status).font(.caption).foregroundColor(.secondary)
@@ -81,7 +85,7 @@ struct MoreView: View {
                 } header: {
                     Text("데이터 가져오기")
                 } footer: {
-                    Text("이미 Apple 건강에 있는 사이클링 운동은 '건강에서 가져오기'로 경로·심박과 함께 Routes 에 채웁니다. 건강에 없거나 경로가 빠진 오래된 기록은 Cyclemeter 에서 GPX 로 내보낸 뒤 여러 파일/폴더를 선택해 가져오세요. 같은 시작 시각은 중복 제외됩니다.")
+                    Text("Apple 건강에 있는 사이클링 운동은 '건강에서 가져오기'를 사용하세요. Cyclemeter 등에서 내보낸 GPX·CSV(요약 목록 또는 좌표 열) 파일·폴더를 선택하면 Routes에 추가됩니다. 같은 시작 시각은 중복 제외됩니다.")
                 }
                 Section {
                     HStack { Text("버전"); Spacer(); Text("1.0").foregroundColor(.secondary) }
@@ -93,9 +97,9 @@ struct MoreView: View {
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
             .fileImporter(isPresented: $showImporter,
-                          allowedContentTypes: gpxTypes,
+                          allowedContentTypes: importTypes,
                           allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result { session.importGPX(from: urls) }
+                if case .success(let urls) = result { session.importRideFiles(from: urls) }
             }
     }
 

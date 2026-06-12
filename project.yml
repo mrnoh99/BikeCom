@@ -66,6 +66,10 @@ targets:
     platform: iOS
     sources:
       - path: BikeCom
+        excludes:
+          - Resources/**
+      - path: BikeCom/Resources/CyclemeterBaseline.csv
+        buildPhase: resources
     info:
       path: BikeCom/App/Info.plist
       properties:
