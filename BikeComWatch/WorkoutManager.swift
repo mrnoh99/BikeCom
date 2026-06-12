@@ -17,6 +17,7 @@ final class WorkoutManager: NSObject, ObservableObject {
     @Published var avgHeartRate: Int = 0
     @Published var speedMps: Double = 0
     @Published var avgSpeedMps: Double = 0
+    @Published var cadenceRPM: Int = 0
     @Published var avgCadenceRPM: Int = 0
     @Published var distanceMeters: Double = 0
     @Published var elapsedSeconds: TimeInterval = 0
@@ -158,6 +159,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             resetRideMetrics()
 
             let startDate = Date()
+            s.prepare()   // 세션을 미리 활성화해 워크아웃 중 watchOS 가 앱을 종료하지 않도록.
             s.startActivity(with: startDate)
             b.beginCollection(withStart: startDate) { [weak self] success, error in
                 guard let self else { return }
@@ -197,6 +199,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             self.isRunning = false
             self.heartRate = 0
             self.speedMps = 0
+            self.cadenceRPM = 0
             self.speedSensorConnected = false
             self.cadenceSensorConnected = false
             self.elapsedSeconds = 0
@@ -290,6 +293,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             self.avgHeartRate = 0
             self.speedMps = 0
             self.avgSpeedMps = 0
+            self.cadenceRPM = 0
             self.avgCadenceRPM = 0
             self.distanceMeters = 0
             self.elapsedSeconds = 0
@@ -400,8 +404,10 @@ extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
            collectedTypes.contains(cadType) {
             let stats = workoutBuilder.statistics(for: cadType)
             if let q = stats?.mostRecentQuantity() {
-                latestCadenceRPM = Int(q.doubleValue(for: bpmUnit).rounded())
+                let rpm = Int(q.doubleValue(for: bpmUnit).rounded())
+                latestCadenceRPM = rpm
                 lastCadenceSampleAt = Date()
+                DispatchQueue.main.async { self.cadenceRPM = rpm }
             }
             if let avg = stats?.averageQuantity() {
                 let rpm = Int(avg.doubleValue(for: bpmUnit).rounded())

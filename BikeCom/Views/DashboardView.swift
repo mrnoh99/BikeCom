@@ -23,9 +23,6 @@ struct DashboardView: View {
             let layout = DeviceLayout.Dashboard.make(for: geo.size)
             VStack(spacing: 0) {
                 header(layout)
-                if session.state == .paused && session.autoPaused {
-                    autoPauseBadge
-                }
                 grid(layout)
                 controls(layout)
                 gpsBar(layout)
@@ -174,18 +171,12 @@ struct DashboardView: View {
             }
             divider
             metricRow {
+                MetricCell(label: "Climb", value: fmt(session.elevationGainMeters, 0),
+                           unit: "m", color: Theme.green)
                 MetricCell(label: "SpO2",
                            value: session.spo2Percent.map(String.init) ?? "– – –",
                            subvalue: session.spo2LatestTimeText ?? " ",
                            valueSuffix: session.spo2Percent != nil ? "%" : nil,
-                           color: Theme.cyan)
-                MetricCell(label: "24h Min",
-                           value: session.spo2MinPercent.map(String.init) ?? "– – –",
-                           subvalue: session.spo2MinTimeText ?? " ",
-                           color: Theme.cyan)
-                MetricCell(label: "24h Max",
-                           value: session.spo2MaxPercent.map(String.init) ?? "– – –",
-                           subvalue: session.spo2MaxTimeText ?? " ",
                            color: Theme.cyan)
             }
             divider
@@ -292,19 +283,6 @@ struct DashboardView: View {
 
     private var startColor: Color {
         session.state == .running ? Theme.red : Theme.green
-    }
-
-    // 자동 일시정지 배지
-    private var autoPauseBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "pause.circle.fill")
-            Text("AUTO PAUSE")
-        }
-        .font(.system(size: 11, weight: .heavy))
-        .foregroundColor(.black)
-        .padding(.horizontal, 10).padding(.vertical, 4)
-        .background(Capsule().fill(Theme.gold))
-        .padding(.vertical, 2)
     }
 
     // GPS 정확도 표시줄

@@ -34,20 +34,8 @@ final class RideSession: ObservableObject {
     // 표시 단위
     @Published var unit: DistanceUnit = .kilometers
 
-    /// 바퀴가 멈추면 자동 일시정지(기본 켜짐, 설정에서 토글).
-    @Published var autoPauseEnabled: Bool = (UserDefaults.standard.object(forKey: "bike.autoPause") as? Bool) ?? true {
-        didSet { UserDefaults.standard.set(autoPauseEnabled, forKey: "bike.autoPause") }
-    }
-    /// 자동 일시정지 임계 속도(m/s, 기본 0.7 ≈ 2.5km/h).
-    @Published var autoPauseThresholdMps: Double = (UserDefaults.standard.object(forKey: "bike.autoPauseMps") as? Double) ?? 0.7 {
-        didSet { UserDefaults.standard.set(autoPauseThresholdMps, forKey: "bike.autoPauseMps") }
-    }
-    /// 자동 일시정지 지연(초, 기본 3).
-    @Published var autoPauseDelay: Double = (UserDefaults.standard.object(forKey: "bike.autoPauseDelay") as? Double) ?? 3 {
-        didSet { UserDefaults.standard.set(autoPauseDelay, forKey: "bike.autoPauseDelay") }
-    }
-    /// 현재 자동 일시정지 상태(배지 표시용).
-    @Published private(set) var autoPaused = false
+    /// 등반 고도(누적 상승 고도, m) — GPS 고도의 양(+) 변화량 합.
+    @Published private(set) var elevationGainMeters: Double = 0
 
     /// GPX 가져오기 진행/결과 표시.
     @Published var importStatus: String?
@@ -186,7 +174,7 @@ final class RideSession: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     private let movingSpeedThresholdMps = 0.8  // 이 속도 이상이면 "움직이는 중"
-    private var belowThresholdSeconds: TimeInterval = 0
+    private var lastAltitude: Double?           // 등반 고도 계산용 기준 고도
 
     init() {
         // 시계 + 라이딩 타이머 (0.5초 간격)
@@ -281,8 +269,6 @@ final class RideSession: ObservableObject {
             state = .running
         case .paused:
             location.resumeRecording()
-            autoPaused = false
-            belowThresholdSeconds = 0
             state = .running
         case .running:
             pause()
@@ -292,8 +278,6 @@ final class RideSession: ObservableObject {
     func pause() {
         guard state == .running else { return }
         location.pauseRecording()
-        autoPaused = false          // 수동 정지 → 자동 재개 대상 아님
-        belowThresholdSeconds = 0
         state = .paused
     }
 
@@ -444,35 +428,28 @@ final class RideSession: ObservableObject {
             UIApplication.shared.isIdleTimerDisabled = true
         }
 
-        // 자동 재개: 자동 일시정지 상태에서 바퀴가 다시 구르면(임계 이상) 재개.
-        if state == .paused, autoPaused, autoPauseEnabled, currentSpeedMps >= autoPauseThresholdMps {
-            location.resumeRecording()
-            autoPaused = false
-            state = .running
-        }
-
         guard state == .running, let started = startedAt else { return }
         totalSeconds = Date().timeIntervalSince(started)
         rideSeconds += 0.5
         if currentSpeedMps >= movingSpeedThresholdMps {
             movingSeconds += 0.5
         }
-        // 거리는 항상 폰 GPS 기준(워치 속도는 표시·자동일시정지용).
+        // 거리는 항상 폰 GPS 기준.
         distanceMeters = location.distanceMeters
+        accumulateElevationGain()
+    }
 
-        // 자동 일시정지: 바퀴가 임계 미만으로 일정 시간 멈춰 있으면 일시정지.
-        if autoPauseEnabled {
-            if currentSpeedMps < autoPauseThresholdMps {
-                belowThresholdSeconds += 0.5
-                if belowThresholdSeconds >= autoPauseDelay {
-                    location.pauseRecording()
-                    autoPaused = true
-                    belowThresholdSeconds = 0
-                    state = .paused
-                }
-            } else {
-                belowThresholdSeconds = 0
-            }
+    /// GPS 고도의 양(+) 변화량을 누적해 등반 고도를 계산(0.5m 히스테리시스로 노이즈 제거).
+    private func accumulateElevationGain() {
+        guard let loc = location.lastLocation, loc.verticalAccuracy >= 0 else { return }
+        let alt = loc.altitude
+        guard let last = lastAltitude else { lastAltitude = alt; return }
+        let delta = alt - last
+        if delta > 0.5 {
+            elevationGainMeters += delta
+            lastAltitude = alt
+        } else if delta < -0.5 {
+            lastAltitude = alt
         }
     }
 
@@ -549,8 +526,8 @@ final class RideSession: ObservableObject {
         heartRateSamples = []
         cadenceSamples = []
         hrSeries = []
-        belowThresholdSeconds = 0
-        autoPaused = false
+        elevationGainMeters = 0
+        lastAltitude = nil
     }
 }
 

@@ -29,6 +29,29 @@ private struct SensorLinkDot: View {
     }
 }
 
+/// 흰색·노란색이 아닌 숫자에 노란색 윤곽선을 입혀 가독성을 높인다(레이아웃 영향 없음).
+private struct NumberOutline: ViewModifier {
+    let valueColor: Color
+
+    private var outline: Color? {
+        // 흰색(Theme.value)·노란색(Theme.gold)은 윤곽선 없음.
+        (valueColor == Theme.value || valueColor == Theme.gold) ? nil : Theme.gold
+    }
+
+    func body(content: Content) -> some View {
+        if let outline {
+            let w: CGFloat = 1
+            content
+                .shadow(color: outline, radius: 0, x: w, y: 0)
+                .shadow(color: outline, radius: 0, x: -w, y: 0)
+                .shadow(color: outline, radius: 0, x: 0, y: w)
+                .shadow(color: outline, radius: 0, x: 0, y: -w)
+        } else {
+            content
+        }
+    }
+}
+
 /// 대시보드 셀 하나: 고정 크기 라벨 + 가용 공간을 채우는 데이터 값(+ 단위/보조값).
 struct MetricCell: View {
     @Environment(\.dashboardLayout) private var layout
@@ -140,6 +163,7 @@ struct MetricCell: View {
             }
         }
         .foregroundColor(color)
+        .modifier(NumberOutline(valueColor: color))
         .lineLimit(1)
         .minimumScaleFactor(0.01)
         .allowsTightening(true)

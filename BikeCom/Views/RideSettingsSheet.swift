@@ -9,9 +9,6 @@ struct RideSettingsSheet: View {
 
     @State private var routeName = ""
     @State private var bikeName = ""
-    @State private var autoPauseEnabled = true
-    @State private var autoPauseThresholdKmh = 2.5
-    @State private var autoPauseDelay = 3.0
     @State private var selectedWheelId = WheelPresets.defaultOptionId
 
     private var selectedWheel: WheelPresets.Option {
@@ -59,26 +56,6 @@ struct RideSettingsSheet: View {
                         }
                     }
                     TextField("직접 입력", text: $bikeName)
-                }
-                Section("자동 일시정지") {
-                    Toggle("바퀴 멈추면 자동 일시정지", isOn: $autoPauseEnabled)
-                    if autoPauseEnabled {
-                        HStack {
-                            Text("임계 속도")
-                            Spacer()
-                            Text("\(autoPauseThresholdKmh, specifier: "%.1f") km/h")
-                                .foregroundColor(.secondary)
-                        }
-                        Slider(value: $autoPauseThresholdKmh, in: 1...10, step: 0.5)
-                        HStack {
-                            Text("지연 시간")
-                            Spacer()
-                            Text("\(Int(autoPauseDelay))초").foregroundColor(.secondary)
-                        }
-                        Slider(value: $autoPauseDelay, in: 1...10, step: 1)
-                    }
-                    Text("바퀴가 임계 속도 미만으로 지연 시간만큼 멈추면 자동 일시정지되고, 다시 구르면 자동 재개됩니다.")
-                        .font(.caption).foregroundColor(.secondary)
                 }
                 Section {
                     HStack {
@@ -134,9 +111,6 @@ struct RideSettingsSheet: View {
     private func loadDraft() {
         routeName = session.routeName
         bikeName = session.bikeName
-        autoPauseEnabled = session.autoPauseEnabled
-        autoPauseThresholdKmh = session.autoPauseThresholdMps * 3.6
-        autoPauseDelay = session.autoPauseDelay
         selectedWheelId = WheelPresets.nearest(
             toCircumferenceMeters: session.wheelCircumferenceMeters
         ).id
@@ -147,9 +121,6 @@ struct RideSettingsSheet: View {
             ? session.routeName : routeName
         session.bikeName = bikeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? session.bikeName : bikeName
-        session.autoPauseEnabled = autoPauseEnabled
-        session.autoPauseThresholdMps = autoPauseThresholdKmh / 3.6
-        session.autoPauseDelay = autoPauseDelay
         session.wheelCircumferenceMeters = selectedWheel.circumferenceMeters
         session.saveSettings()
         dismiss()

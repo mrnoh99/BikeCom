@@ -16,46 +16,48 @@ struct WatchContentView: View {
         }
     }
 
-    // MARK: - Page 1 (Workout 레이아웃)
+    // MARK: - Page 1 (Apple 피트니스 '실외 자전거' 스타일)
+    // 1) 현재 시각  2) 심박수  3) 속도+연결등  4) 케이던스+연결등  5) 시작/정지
 
     private var workoutPage: some View {
-        VStack(alignment: .leading, spacing: WorkoutScreenStyle.sectionSpacing) {
-            // 1. 좌상단 자전거
-            WorkoutBikeIcon(size: 22)
+        VStack(alignment: .leading, spacing: 2) {
+            // 1) 현재 시각 (좌상단 자전거 + 큰 시계, 1초마다 갱신)
+            HStack(spacing: 4) {
+                WorkoutBikeIcon(size: 20)
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                    Text(Self.clock.string(from: ctx.date))
+                        .font(WorkoutScreenStyle.timerFont)
+                        .foregroundColor(.yellow)
+                        .contentTransition(.numericText())
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
 
-            // 거리 (노란색·큰 글씨)
-            Text(formatWorkoutDistance(km: workout.distanceMeters / 1000))
-                .font(WorkoutScreenStyle.timerFont)
-                .foregroundColor(.yellow)
-                .contentTransition(.numericText())
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
-
-            // 2. 현재 심박수 (평균 아님)
-            heartRateRow
-
-            // 평균 속도
+            // 2) 심박수 (현재)
             WorkoutMetricRow(
-                value: workout.avgSpeedMps > 0
-                    ? String(format: "%.0f", workout.avgSpeedMps * 3.6)
-                    : "--",
-                unit: "KM/H",
-                labelTop: "평균 속도",
-                labelBottom: nil,
+                value: workout.heartRate > 0 ? "\(workout.heartRate)" : "--",
+                unit: "BPM", labelTop: "심박수", labelBottom: nil
+            )
+
+            // 3) 속도 (현재) + 연결등
+            WorkoutMetricRow(
+                value: workout.speedMps > 0 ? String(format: "%.1f", workout.speedMps * 3.6) : "--",
+                unit: "KM/H", labelTop: "속도", labelBottom: nil,
                 connected: workout.speedSensorConnected
             )
 
-            // 평균 케이던스
+            // 4) 케이던스 (현재) + 연결등
             WorkoutMetricRow(
-                value: workout.avgCadenceRPM > 0 ? "\(workout.avgCadenceRPM)" : "--",
-                unit: "RPM",
-                labelTop: "평균케이던스",
-                labelBottom: nil,
+                value: workout.cadenceRPM > 0 ? "\(workout.cadenceRPM)" : "--",
+                unit: "RPM", labelTop: "케이던스", labelBottom: nil,
                 connected: workout.cadenceSensorConnected
             )
 
             Spacer(minLength: 2)
 
+            // 5) 시작 / 정지
             HStack {
                 Spacer(minLength: 0)
                 Button {
@@ -76,46 +78,9 @@ struct WatchContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var heartRateRow: some View {
-        HStack(alignment: .center, spacing: 3) {
-            HStack(alignment: .center, spacing: 3) {
-                Text(workout.heartRate > 0 ? "\(workout.heartRate)" : "--")
-                    .font(WorkoutScreenStyle.metricFont)
-                    .foregroundColor(.white)
-                    .contentTransition(.numericText())
-
-                Image(systemName: "heart.fill")
-                    .font(.system(size: WorkoutScreenStyle.heartIconSize, weight: .bold))
-                    .foregroundColor(.red)
-                    .symbolEffect(.pulse, isActive: workout.isRunning && workout.heartRate > 0)
-
-                Text("BPM")
-                    .font(WorkoutScreenStyle.unitFont)
-                    .foregroundColor(.white.opacity(0.85))
-            }
-
-            Spacer(minLength: 2)
-
-            VStack(spacing: 0) {
-                Text(workout.avgHeartRate > 0 ? "\(workout.avgHeartRate)" : "--")
-                    .font(WorkoutScreenStyle.metricFont)
-                    .foregroundColor(.white)
-                    .contentTransition(.numericText())
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
-                Text("평균 심박수")
-                    .font(WorkoutScreenStyle.labelFont)
-                    .foregroundColor(.white.opacity(0.85))
-            }
-            .frame(maxWidth: .infinity)
-
-            Spacer(minLength: 2)
-
-            Text("심박수")
-                .font(WorkoutScreenStyle.labelFont)
-                .foregroundColor(.white.opacity(0.85))
-        }
-    }
+    static let clock: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
+    }()
 
     // MARK: - Page 2 (SpO2)
 

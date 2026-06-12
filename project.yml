@@ -153,12 +153,18 @@ targets:
         CODE_SIGN_ENTITLEMENTS: BikeComWatch/BikeComWatch.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        # 없으면 watchOS 기기 설치 실패 + 컴플리케이션 갤러리 아이콘 미표시.
+        INFOPLIST_KEY_CFBundleIconName: AppIcon
         TARGETED_DEVICE_FAMILY: "4"
     dependencies:
       # 워치 컴플리케이션(위젯 익스텐션)은 워치 앱 PlugIns 에 임베드된다(익스텐션 정상 위치).
       - target: BikeComWatchWidget
         embed: true
         codeSign: true
+    postBuildScripts:
+      # 임베드된 워치 Info.plist 에 CFBundleIconName 을 보장(설치·아이콘 표시).
+      - name: Ensure Watch Icon Plist
+        script: "${SRCROOT}/scripts/ensure_watch_icon_plist.sh"
 
   # 애플워치 컴플리케이션 (WidgetKit accessory) — 워치 앱에 임베드
   BikeComWatchWidget:
