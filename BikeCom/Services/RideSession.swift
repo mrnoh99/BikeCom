@@ -323,9 +323,10 @@ final class RideSession: ObservableObject {
         importBaselineHistoryIfNeeded()
     }
 
-    private static let baselineImportedKey = "bike.cyclemeterBaselineV1"
+    private static let baselineImportedKey = "bike.cyclemeterBaselineV2"
 
-    /// 앱 번들 Cyclemeter CSV 를 1회 주입한다. Health 와 같은 시작 시각은 Health 가 우선한다.
+    /// 앱 번들 Cyclemeter CSV 를 1회 주입한다(V2: DB 추출 정제본).
+    /// 기존 Cyclemeter 기록은 제거 후 정제본으로 교체하고, 앱·건강·GPX 기록은 유지한다.
     private func importBaselineHistoryIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: Self.baselineImportedKey) else { return }
         guard let url = Bundle.main.url(forResource: "CyclemeterBaseline", withExtension: "csv") else { return }
@@ -334,8 +335,10 @@ final class RideSession: ObservableObject {
             let baseline = CSVImporter.parse(data: data, fallbackName: "Cyclemeter")
             guard !baseline.isEmpty else { return }
             DispatchQueue.main.async {
+                // 기존 Cyclemeter 기록(구버전·손상 포함) 제거 후 정제본 주입. 나머지 출처는 유지.
+                let kept = self.store.records.filter { $0.source != .cyclemeter }
                 let merged = RideRecordMerge.merge(
-                    existing: self.store.records,
+                    existing: kept,
                     incoming: baseline,
                     incomingWins: false)
                 self.store.replaceAll(merged)
