@@ -156,7 +156,7 @@ struct RoutesView: View {
             Button("정리 실행 (5km 이하 삭제)", role: .destructive) { session.consolidateRoutes() }
             Button("취소", role: .cancel) {}
         } message: {
-            Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple 건강 기록을 보충합니다. 주행거리 5km 이하는 일괄 삭제합니다.")
+            Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple Health 기록을 보충합니다. 주행거리 5km 이하는 일괄 삭제합니다.")
         }
         .sheet(item: $exportFile) { f in
             ActivityView(items: [f.url])
@@ -177,7 +177,7 @@ struct RoutesView: View {
             }
             Divider()
             Button { session.importStatus = nil; session.importFromHealth() } label: {
-                Label("Apple 건강에서 가져오기", systemImage: "heart.text.square")
+                Label("Apple Health에서 가져오기", systemImage: "heart.text.square")
             }
             Button { session.importStatus = nil; showImporter = true } label: {
                 Label("GPX / CSV 파일 가져오기", systemImage: "square.and.arrow.down")
@@ -659,7 +659,7 @@ struct RideDetailView: View {
             }
             Button("취소", role: .cancel) {}
         } message: {
-            Text("삭제하면 목록에서 제거됩니다. (Apple 건강·캘린더 기록은 영향받지 않습니다)")
+            Text("삭제하면 목록에서 제거됩니다. (Apple Health·캘린더 기록은 영향받지 않습니다)")
         }
         .onAppear {
             guard loadedTrack.isEmpty, record.trackCount > 0 else { return }

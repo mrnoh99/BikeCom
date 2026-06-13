@@ -37,7 +37,7 @@ struct MoreView: View {
                 } header: {
                     Text("누적 통계")
                 } footer: {
-                    Text("총 라이딩 시간은 Cyclemeter(가져온 JSON 기록)와 Apple 건강의 사이클링 운동을 시작 시각 기준으로 중복 없이 합산합니다.")
+                    Text("총 라이딩 시간은 Cyclemeter(가져온 JSON 기록)와 Apple Health의 사이클링 운동을 시작 시각 기준으로 중복 없이 합산합니다.")
                 }
                 Section("지도 코스") {
                     NavigationLink {
@@ -91,23 +91,25 @@ struct MoreView: View {
         if let s = session.dataStats {
             Section {
                 kv("Cyclemeter 기본(트랙 포함)", "\(s.cyclemeterBase)개", Theme.green)
-                kv("건강 보충(겹치지 않음)", "\(s.healthSupplemented)개", Theme.red)
-                kv("건강 겹침(제외)", "\(s.healthOverlap)개")
-                kv("건강 전체(Apple Health)", "\(s.healthTotal)개")
+                kv("Health 전체(Apple Health)", "\(s.healthTotal)개")
+                kv("Health 겹침(제외)", "\(s.healthOverlap)개")
+                kv("Health 겹치지 않음", "\(s.healthNonOverlap)개")
+                kv("└ 5km 이하·속도 0 제외", "\(s.healthExcludedFilter)개", Theme.gold)
+                kv("최종 Health 보충", "\(s.healthSupplemented)개", Theme.red)
             } header: {
                 Text("데이터 출처 — 기록 수")
             } footer: {
-                Text("Cyclemeter 시드(트랙 포함) \(s.cyclemeterBase)건을 기본으로, Apple 건강 \(s.healthTotal)건 중 겹치지 않는 \(s.healthSupplemented)건을 보충했습니다(겹침 \(s.healthOverlap)건 제외).")
+                Text("Health \(s.healthTotal)건 중 겹치지 않는 \(s.healthNonOverlap)건에서, 거리 5km 이하·속도 0 인 \(s.healthExcludedFilter)건을 제외해 최종 \(s.healthSupplemented)건을 보충했습니다(겹침 \(s.healthOverlap)건 제외).")
             }
             Section {
-                distRow("이번 달", s.healthMonthKm, s.bothMonthKm)
-                distRow("올해", s.healthYearKm, s.bothYearKm)
-                distRow("전체", s.healthTotalKm, s.bothTotalKm)
+                distRow("이번 달", s.healthMonthKm, s.cycMonthKm, s.bothMonthKm)
+                distRow("올해", s.healthYearKm, s.cycYearKm, s.bothYearKm)
+                distRow("전체", s.healthTotalKm, s.cycTotalKm, s.bothTotalKm)
             } header: {
-                Text("거리 — 건강만 / 건강+Cyclemeter")
+                Text("거리 — Health / CM / 합계")
             }
             Section {
-                firstRow("첫 건강 기록", s.firstHealthDate, s.firstHealthPlace)
+                firstRow("첫 Health 기록", s.firstHealthDate, s.firstHealthPlace)
                 firstRow("첫 Cyclemeter 기록", s.firstCycDate, s.firstCycPlace)
             } header: {
                 Text("첫 기록 (날짜·시간·장소)")
@@ -123,11 +125,13 @@ struct MoreView: View {
         HStack { Text(l); Spacer(); Text(r).foregroundColor(color) }
     }
 
-    private func distRow(_ label: String, _ healthKm: Double, _ bothKm: Double) -> some View {
-        HStack {
+    private func distRow(_ label: String, _ healthKm: Double, _ cycKm: Double, _ bothKm: Double) -> some View {
+        HStack(spacing: 6) {
             Text(label)
             Spacer()
-            Text("건강 \(Int(healthKm.rounded()))").foregroundColor(Theme.red)
+            Text("H \(Int(healthKm.rounded()))").foregroundColor(Theme.red)
+            Text("/").foregroundColor(.secondary)
+            Text("CM \(Int(cycKm.rounded()))").foregroundColor(Theme.green)
             Text("/").foregroundColor(.secondary)
             Text("합계 \(Int(bothKm.rounded())) km").foregroundColor(Theme.purple)
         }.font(.callout)

@@ -19,12 +19,15 @@ enum SpeedSource {
 /// More 탭 데이터 출처 통계 (Cyclemeter 시드 = 기본, Health = 비중복 보충).
 struct DataStats {
     var cyclemeterBase = 0        // 기본 Cyclemeter 시드(트랙 포함) 기록 수
-    var healthSupplemented = 0    // 겹치지 않아 보충된 건강 기록 수
-    var healthOverlap = 0         // 기본과 겹쳐 제외된 건강 워크아웃 수
-    var healthTotal = 0           // Apple 건강의 사이클링 워크아웃 총 수
+    var healthTotal = 0           // Apple Health 사이클링 워크아웃 총 수
+    var healthOverlap = 0         // 기본과 겹쳐 제외된 Health 워크아웃 수
+    var healthNonOverlap = 0      // 겹치지 않는 Health 워크아웃 수
+    var healthExcludedFilter = 0  // 겹치지 않음 중 거리 5km 이하·속도 0 으로 제외된 수
+    var healthSupplemented = 0    // 최종 보충된 Health 기록 수(겹치지 않음 − 제외)
 
-    var healthMonthKm = 0.0, healthYearKm = 0.0, healthTotalKm = 0.0   // 건강(보충분)만
-    var bothMonthKm = 0.0, bothYearKm = 0.0, bothTotalKm = 0.0         // Cyclemeter+건강
+    var healthMonthKm = 0.0, healthYearKm = 0.0, healthTotalKm = 0.0   // Health(보충분)만
+    var cycMonthKm = 0.0, cycYearKm = 0.0, cycTotalKm = 0.0            // Cyclemeter(CM)만
+    var bothMonthKm = 0.0, bothYearKm = 0.0, bothTotalKm = 0.0         // 합계(Health+CM)
 
     var firstHealthDate: Date?, firstHealthPlace = ""
     var firstCycDate: Date?, firstCycPlace = ""
@@ -123,7 +126,7 @@ final class RideSession: ObservableObject {
         static func fresh(rideName: String) -> RideSaveProgress {
             RideSaveProgress(rideName: rideName, steps: [
                 Step(id: "list", title: "라이딩 기록 저장"),
-                Step(id: "health", title: "건강 앱 저장"),
+                Step(id: "health", title: "Health 앱 저장"),
                 Step(id: "calendar", title: "캘린더 저장"),
                 Step(id: "file", title: "GPX 파일 저장"),
             ])
@@ -139,13 +142,13 @@ final class RideSession: ObservableObject {
 
     /// Apple 건강의 사이클링 워크아웃을 **겹치지 않는 것만 보충**한다(시드 트랙 데이터가 기본).
     func importFromHealth() {
-        importStatus = "건강에서 가져오는 중…"
+        importStatus = "Health에서 가져오는 중…"
         // 기존 기록(시드 Cyclemeter 등)과 겹치는 워크아웃은 경로 조회 전에 미리 제외(속도 핵심).
         let existing = store.records
         healthImporter.importCyclingWorkouts(skipIfDuplicate: { r in
             existing.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) })
         }, progress: { [weak self] done, total in
-            self?.importStatus = "건강에서 가져오는 중… \(done)/\(total)"
+            self?.importStatus = "Health에서 가져오는 중… \(done)/\(total)"
         }, completion: { [weak self] records in
             guard let self else { return }
             // 주행시간 0 이거나 거리 5km 이하인 건강 기록은 제외한다.
@@ -153,8 +156,8 @@ final class RideSession: ObservableObject {
             self.store.addMany(kept)
             let dropped = records.count - kept.count
             self.importStatus = dropped > 0
-                ? "건강 보충 완료: \(kept.count)개 추가 (시간 0·5km 이하 \(dropped)개 제외)"
-                : "건강 보충 완료: 겹치지 않는 \(kept.count)개 추가"
+                ? "Health 보충 완료: \(kept.count)개 추가 (시간 0·5km 이하 \(dropped)개 제외)"
+                : "Health 보충 완료: 겹치지 않는 \(kept.count)개 추가"
             self.refreshDataStats()
         })
     }
@@ -191,7 +194,7 @@ final class RideSession: ObservableObject {
                 result.sort { $0.startedAt > $1.startedAt }
                 self.store.replaceAll(courses + result)   // 코스 자료는 맨 앞에 보존
                 self.health.refreshTotals()
-                self.importStatus = "정리 완료: \(result.count)개 기록 · 5km 이하 \(removed)개 삭제 (건강 후보 \(healthRides.count))"
+                self.importStatus = "정리 완료: \(result.count)개 기록 · 5km 이하 \(removed)개 삭제 (Health 후보 \(healthRides.count))"
                 self.refreshDataStats()
             }
         })
@@ -200,7 +203,7 @@ final class RideSession: ObservableObject {
     /// More 탭 데이터 출처 통계를 백그라운드에서 계산해 발행한다.
     func refreshDataStats() {
         let records = store.records.filter { !$0.isCourseOnly }   // 코스 자료는 통계 제외
-        let healthTotal = health.rideWorkouts.count   // Apple 건강 사이클링 워크아웃 총 수
+        let healthWorkouts = health.rideWorkouts   // Apple Health 사이클링 워크아웃(시작·시간·거리)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             var st = DataStats()
             let cal = Calendar.current
@@ -214,11 +217,27 @@ final class RideSession: ObservableObject {
             let health = records.filter { $0.source == .health }
             let cyc = records.filter { $0.source == .cyclemeter }
             st.cyclemeterBase = cyc.count
-            st.healthSupplemented = health.count
-            st.healthTotal = healthTotal
-            st.healthOverlap = max(0, healthTotal - health.count)
+
+            // 기본(앱·GPX·Cyclemeter)과 Health 워크아웃의 겹침/제외/보충을 직접 계산.
+            let base = records.filter {
+                let s = $0.source ?? .app
+                return s == .app || s == .gpx || s == .cyclemeter
+            }
+            func overlapsBase(_ w: HealthStore.HealthRide) -> Bool {
+                base.contains { abs($0.startedAt.timeIntervalSince(w.start)) <= 180
+                    && abs($0.duration - w.duration) <= 120 }
+            }
+            let nonOverlap = healthWorkouts.filter { !overlapsBase($0) }
+            // 겹치지 않음 중 거리 5km 이하 또는 속도 0(주행시간 0)으로 제외.
+            let excluded = nonOverlap.filter { $0.duration <= 0 || $0.distanceMeters <= 5000 }
+            st.healthTotal = healthWorkouts.count
+            st.healthNonOverlap = nonOverlap.count
+            st.healthOverlap = healthWorkouts.count - nonOverlap.count
+            st.healthExcludedFilter = excluded.count
+            st.healthSupplemented = nonOverlap.count - excluded.count
 
             st.healthMonthKm = km(health, inMonth); st.healthYearKm = km(health, inYear); st.healthTotalKm = km(health) { _ in true }
+            st.cycMonthKm = km(cyc, inMonth); st.cycYearKm = km(cyc, inYear); st.cycTotalKm = km(cyc) { _ in true }
             let both = health + cyc
             st.bothMonthKm = km(both, inMonth); st.bothYearKm = km(both, inYear); st.bothTotalKm = km(both) { _ in true }
 

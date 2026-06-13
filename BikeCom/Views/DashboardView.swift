@@ -57,9 +57,9 @@ struct DashboardView: View {
             Button("저장") { session.savePendingRide() }
             Button("삭제", role: .destructive) { session.discardPendingRide() }
         } message: {
-            Text("이 라이딩은 10분 미만입니다. 건강·캘린더·파일에 저장할까요?")
+            Text("이 라이딩은 10분 미만입니다. Health·캘린더·파일에 저장할까요?")
         }
-        // 저장 완료 확인(건강·캘린더·파일 3가지)
+        // 저장 완료 확인(Health·캘린더·파일 3가지)
         .sheet(item: $session.saveProgress) { _ in
             RideSaveProgressView()
                 .environmentObject(session)

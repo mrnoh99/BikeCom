@@ -17,7 +17,7 @@ final class HealthStore: ObservableObject {
 
     /// Apple 건강의 사이클링 워크아웃 1건(시작 시각 + 라이딩 시간).
     /// Cyclemeter(JSON) 기록과 합쳐 중복 없이 총 라이딩 시간을 구하는 데 쓴다.
-    struct HealthRide { let start: Date; let duration: TimeInterval }
+    struct HealthRide { let start: Date; let duration: TimeInterval; let distanceMeters: Double }
     @Published private(set) var rideWorkouts: [HealthRide] = []
 
     /// 건강 권한이 허용되어 누적값을 읽어온 적이 있는지(폴백 판정용).
@@ -105,10 +105,13 @@ final class HealthStore: ObservableObject {
     func refreshWorkouts() {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         let predicate = HKQuery.predicateForWorkouts(with: .cycling)
+        let dType = distanceType
         let q = HKSampleQuery(sampleType: .workoutType(), predicate: predicate,
                               limit: HKObjectQueryNoLimit, sortDescriptors: nil) { [weak self] _, samples, _ in
-            let rides = (samples as? [HKWorkout])?.map {
-                HealthRide(start: $0.startDate, duration: $0.duration)
+            let rides = (samples as? [HKWorkout])?.map { w -> HealthRide in
+                let dist = dType.flatMap { w.statistics(for: $0)?.sumQuantity()?.doubleValue(for: .meter()) }
+                    ?? (w.totalDistance?.doubleValue(for: .meter()) ?? 0)
+                return HealthRide(start: w.startDate, duration: w.duration, distanceMeters: dist)
             } ?? []
             DispatchQueue.main.async {
                 self?.rideWorkouts = rides
