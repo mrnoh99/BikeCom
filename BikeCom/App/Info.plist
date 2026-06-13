@@ -46,6 +46,11 @@
 	<array>
 		<string>location</string>
 	</array>
+	<!-- 라이딩 백업 파일을 Files 앱에서 열람·복사 가능하게(재설치 대비) -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 </dict>

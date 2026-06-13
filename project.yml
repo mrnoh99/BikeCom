@@ -85,6 +85,10 @@ targets:
         NSLocationWhenInUseUsageDescription: "라이딩 중 GPS 경로·거리·속도를 기록합니다."
         UIBackgroundModes:
           - location
+        # 라이딩 백업 파일을 Files 앱에서 열람·복사 가능하게(재설치 대비).
+        # Info.plist 가 xcodegen 으로 재생성돼도 유지되도록 여기에도 둔다.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         NSUbiquitousContainers:
           iCloud.com.jaisungnoh.bikecom:
             NSUbiquitousContainerIsDocumentScopePublic: true
