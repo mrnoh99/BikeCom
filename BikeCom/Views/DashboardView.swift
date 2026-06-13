@@ -295,7 +295,7 @@ struct DashboardView: View {
                 .font(.system(size: layout.footerFont + 1, weight: .semibold))
                 .foregroundColor(Theme.label)
             Spacer()
-            Text("J. NOH MD '26")
+            Text("Developed by JaiSung NOH MD 2026")
                 .font(.system(size: layout.footerFont))
                 .foregroundColor(Theme.label)
                 .lineLimit(1)

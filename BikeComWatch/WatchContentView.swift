@@ -72,6 +72,12 @@ struct WatchContentView: View {
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
+
+            Text("Developed by JaiSung NOH MD 2026")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
         }
         .padding(.leading, WorkoutScreenStyle.leadingInset)
         .padding(.trailing, 4)

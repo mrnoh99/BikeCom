@@ -68,7 +68,7 @@ struct MoreView: View {
                 }
                 Section {
                     HStack { Text("버전"); Spacer(); Text("1.0").foregroundColor(.secondary) }
-                    HStack { Text("디자인"); Spacer(); Text("Designed by Jaisung NOH MD 2026").foregroundColor(.secondary) }
+                    HStack { Text("개발"); Spacer(); Text("Developed by JaiSung NOH MD 2026").foregroundColor(.secondary) }
                 } footer: {
                     Text("데이터 가져오기·기록 통합 정리는 Routes(라이딩 기록) 첫 페이지의 ⤓ 메뉴로 옮겼습니다. 속도·케이던스는 워치에 페어링한 BLE 센서만 사용합니다.")
                 }
