@@ -61,6 +61,8 @@ struct RoutesView: View {
     @State private var grouped = false
     @State private var showImporter = false
     @State private var showConsolidateConfirm = false
+    @State private var exportFile: ExportFile?
+    @State private var exporting = false
     @AppStorage("route.bucketMeters") private var bucketMeters: Double = 250
 
     private var importTypes: [UTType] {
@@ -106,6 +108,9 @@ struct RoutesView: View {
         } message: {
             Text("앱 직접 기록 → Apple 건강 → Cyclemeter 순으로 중복 없이 채우고, 주행거리 5km 이하 라이딩을 일괄 삭제합니다.")
         }
+        .sheet(item: $exportFile) { f in
+            ActivityView(items: [f.url])
+        }
     }
 
     // 데이터 가져오기/정리 메뉴 (라이딩 기록 첫 페이지)
@@ -121,8 +126,30 @@ struct RoutesView: View {
             Button { session.importStatus = nil; showImporter = true } label: {
                 Label("GPX / CSV 파일 가져오기", systemImage: "square.and.arrow.down")
             }
+            Divider()
+            Button { exportAll() } label: {
+                Label(exporting ? "내보내는 중…" : "전체 데이터 내보내기 (GPX zip)",
+                      systemImage: "square.and.arrow.up.on.square")
+            }
+            .disabled(exporting || session.store.records.isEmpty)
         } label: {
             Image(systemName: "tray.and.arrow.down")
+        }
+    }
+
+    // 전체 라이딩을 라이딩별 GPX + rides.json 으로 묶어 zip 내보내기(공유 시트).
+    private func exportAll() {
+        guard !exporting else { return }
+        exporting = true
+        session.importStatus = "전체 내보내는 중… (\(session.store.records.count)건)"
+        GPXExporter.exportAllZip(session.store.records) { url, count in
+            exporting = false
+            if let url {
+                session.importStatus = "내보내기 준비됨: GPX \(count)개 → 공유 시트에서 저장/전송"
+                exportFile = ExportFile(url: url)
+            } else {
+                session.importStatus = "내보내기 실패"
+            }
         }
     }
 
@@ -641,4 +668,19 @@ struct RouteThumbnail: View {
                                     longitudeDelta: max(0.002, (maxLon - minLon) * 1.3))
         return MKCoordinateRegion(center: center, span: span)
     }
+}
+
+/// 전체 내보내기 zip URL 래퍼(sheet item 용).
+struct ExportFile: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+/// 공유 시트(UIActivityViewController) 래퍼.
+struct ActivityView: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

@@ -38,6 +38,45 @@ enum GPXExporter {
         return url
     }
 
+    /// 앱의 전체 라이딩을 라이딩별 GPX 로 쓴 폴더를 만들고 .zip 으로 묶어 임시 URL 반환.
+    /// (백그라운드 실행 권장; completion 은 메인 큐로 반환)
+    static func exportAllZip(_ records: [RideRecord], completion: @escaping (URL?, Int) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fm = FileManager.default
+            let df = DateFormatter(); df.dateFormat = "yyyyMMdd-HHmm"
+            let folderName = "BikeCom-Export-\(df.string(from: Date()))"
+            let folder = fm.temporaryDirectory.appendingPathComponent(folderName, isDirectory: true)
+            try? fm.removeItem(at: folder)
+            try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+
+            var used = Set<String>(); var count = 0
+            for r in records {
+                var stem = fileStem(r); var name = stem; var k = 1
+                while used.contains(name.lowercased()) { name = "\(stem)-\(k)"; k += 1 }
+                used.insert(name.lowercased())
+                if let data = makeGPX(r).data(using: .utf8) {
+                    try? data.write(to: folder.appendingPathComponent("\(name).gpx"), options: .atomic)
+                    count += 1
+                }
+            }
+            // 라이딩 기록 원본도 함께 백업(재가져오기/보관용).
+            if let json = try? JSONEncoder().encode(records) {
+                try? json.write(to: folder.appendingPathComponent("rides.json"), options: .atomic)
+            }
+
+            // NSFileCoordinator(.forUploading) 가 폴더를 zip 으로 만들어 준다(외부 라이브러리 불필요).
+            var zipURL: URL?
+            var err: NSError?
+            NSFileCoordinator().coordinate(readingItemAt: folder, options: .forUploading, error: &err) { tmp in
+                let dest = fm.temporaryDirectory.appendingPathComponent("\(folderName).zip")
+                try? fm.removeItem(at: dest)
+                do { try fm.copyItem(at: tmp, to: dest); zipURL = dest } catch { zipURL = nil }
+            }
+            try? fm.removeItem(at: folder)
+            DispatchQueue.main.async { completion(zipURL, count) }
+        }
+    }
+
     /// GPX 저장 폴더: iCloud 컨테이너(BikeCom)의 Documents/GPX, 없으면 로컬 Documents/GPX.
     static func gpxFolder() -> URL {
         let useCloud = Thread.isMainThread
