@@ -152,11 +152,15 @@ struct RoutesView: View {
                     }
                 }
         )
-        .confirmationDialog("기록 통합 정리", isPresented: $showConsolidateConfirm, titleVisibility: .visible) {
-            Button("정리 실행 (5km 이하 삭제)", role: .destructive) { session.consolidateRoutes() }
-            Button("취소", role: .cancel) {}
-        } message: {
-            Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple Health 기록을 보충합니다. 주행거리 5km 이하는 일괄 삭제합니다.")
+        // confirmationDialog 은 부모(RoutesView)가 0.5초 시계 틱마다 재렌더되면 배경이
+        // 깜빡인다. 안정적인 시트로 표시하고 명시적 '닫기'를 둔다.
+        .sheet(isPresented: $showConsolidateConfirm) {
+            ConsolidateConfirmSheet(
+                onRun: { session.consolidateRoutes(); showConsolidateConfirm = false },
+                onClose: { showConsolidateConfirm = false }
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
         }
         .sheet(item: $exportFile) { f in
             ActivityView(items: [f.url])
@@ -919,6 +923,40 @@ struct RouteThumbnail: View {
 struct ExportFile: Identifiable {
     let id = UUID()
     let url: URL
+}
+
+/// 기록 통합 정리 확인 시트(닫기 버튼 포함, 깜빡임 없는 안정적 표시).
+private struct ConsolidateConfirmSheet: View {
+    let onRun: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple Health 기록을 보충합니다. 주행거리 5km 이하·속도 0 기록은 일괄 삭제합니다.")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                Button(role: .destructive) {
+                    onRun()
+                } label: {
+                    Text("정리 실행 (5km 이하 삭제)")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                Spacer(minLength: 0)
+            }
+            .padding()
+            .navigationTitle("기록 통합 정리")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("닫기") { onClose() }
+                }
+            }
+        }
+    }
 }
 
 /// GPX/CSV 가져온 뒤 주행 데이터 vs 지도 코스 자료 선택.
