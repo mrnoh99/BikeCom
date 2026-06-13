@@ -60,12 +60,11 @@ struct DashboardView: View {
             Text("이 라이딩은 10분 미만입니다. 건강·캘린더·파일에 저장할까요?")
         }
         // 저장 완료 확인(건강·캘린더·파일 3가지)
-        .alert("저장 완료", isPresented: Binding(
-            get: { session.saveSummary != nil },
-            set: { if !$0 { session.saveSummary = nil } })) {
-            Button("확인") { session.saveSummary = nil }
-        } message: {
-            Text(session.saveSummary ?? "")
+        .sheet(item: $session.saveProgress) { _ in
+            RideSaveProgressView()
+                .environmentObject(session)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -96,7 +95,7 @@ struct DashboardView: View {
         }
         .padding(.horizontal, layout.chipHPadding)
         .padding(.vertical, layout.chipVPadding)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: layout.chipFont + layout.chipVPadding * 2 + 4)
         .background(Capsule().fill(Color(white: 0.14)))
     }
 
@@ -126,58 +125,72 @@ struct DashboardView: View {
 
     // 메트릭 그리드 — 8행이 남은 높이를 균등 분배(스크롤 없음).
     private func grid(_ layout: DeviceLayout.Dashboard) -> some View {
-        VStack(spacing: 0) {
+        let dash = MetricDash.symbol
+        let speedConnected = session.watch.speedSensorConnected
+        let cadConnected = session.watch.cadenceSensorConnected
+        let hrConnected = session.watch.heartRateConnected
+
+        return VStack(spacing: 0) {
             metricRow {
-                MetricCell(label: "Clock", value: clockFormatter.string(from: session.clock).prefix5,
-                           color: Theme.value)
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                    MetricCell(label: "Clock", value: clockFormatter.string(from: ctx.date).prefix5,
+                               rowIndex: 0)
+                }
                 MetricCell(label: "Distance", value: fmt(session.displayDistance, 2),
-                           color: Theme.gold)
+                           rowIndex: 0, unit: session.unit.distanceLabel)
             }
             divider
             metricRow {
-                MetricCell(label: "Speed", value: fmt(session.displaySpeed, 2),
+                MetricCell(label: "Speed",
+                           value: speedConnected ? fmt(session.displaySpeed, 2) : dash,
+                           rowIndex: 1,
                            unit: session.unit.speedLabel,
-                           sensorStatus: session.watch.speedSensorConnected ? .connected : .waiting,
-                           color: Theme.blue)
+                           sensorStatus: speedConnected ? .connected : .waiting)
                 MetricCell(label: "Average", value: fmt(session.displayAverageSpeed, 2),
-                           color: Theme.value)
+                           rowIndex: 1, unit: session.unit.speedLabel)
             }
             divider
             metricRow {
                 MetricCell(label: "Ride", value: formatDuration(session.rideSeconds),
-                           subvalue: formatDuration(session.movingSeconds), color: Theme.gold)
+                           rowIndex: 2, subvalue: formatDuration(session.movingSeconds))
                 MetricCell(label: "Total", value: formatDuration(session.totalSeconds),
-                           color: Theme.gold)
+                           rowIndex: 2)
             }
             divider
             metricRow {
-                MetricCell(label: "HR", value: session.heartRate.map(String.init) ?? "– – –",
-                           unit: "bpm", color: Theme.red)
-                MetricCell(label: "Mean", value: session.avgHeartRate.map(String.init) ?? "– – –",
-                           color: Theme.red)
-                MetricCell(label: "Max", value: session.maxHeartRate.map(String.init) ?? "– – –",
-                           color: Theme.red)
+                MetricCell(label: "HR",
+                           value: hrConnected ? (session.heartRate.map(String.init) ?? dash) : dash,
+                           rowIndex: 3, unit: "bpm",
+                           sensorStatus: hrConnected ? .connected : .waiting)
+                MetricCell(label: "Mean",
+                           value: session.avgHeartRate.map(String.init) ?? dash,
+                           rowIndex: 3, unit: "bpm")
+                MetricCell(label: "Max",
+                           value: session.maxHeartRate.map(String.init) ?? dash,
+                           rowIndex: 3, unit: "bpm")
             }
             divider
             metricRow {
-                MetricCell(label: "Cad", value: session.cadence.map(String.init) ?? "– – –",
-                           unit: "rpm",
-                           sensorStatus: session.watch.cadenceSensorConnected ? .connected : .waiting,
-                           color: Theme.value)
-                MetricCell(label: "Mean", value: session.avgCadence.map(String.init) ?? "– – –",
-                           color: Theme.value)
-                MetricCell(label: "Max", value: session.maxCadence.map(String.init) ?? "– – –",
-                           color: Theme.value)
+                MetricCell(label: "Cad",
+                           value: cadConnected ? (session.cadence.map(String.init) ?? dash) : dash,
+                           rowIndex: 4, unit: "rpm",
+                           sensorStatus: cadConnected ? .connected : .waiting)
+                MetricCell(label: "Mean",
+                           value: session.avgCadence.map(String.init) ?? dash,
+                           rowIndex: 4, unit: "rpm")
+                MetricCell(label: "Max",
+                           value: session.maxCadence.map(String.init) ?? dash,
+                           rowIndex: 4, unit: "rpm")
             }
             divider
             metricRow {
                 MetricCell(label: "Climb", value: fmt(session.elevationGainMeters, 0),
-                           unit: "m", color: Theme.green)
+                           rowIndex: 5, unit: "m")
                 MetricCell(label: "SpO2",
-                           value: session.spo2Percent.map(String.init) ?? "– – –",
-                           subvalue: session.spo2LatestTimeText ?? " ",
-                           valueSuffix: session.spo2Percent != nil ? "%" : nil,
-                           color: Theme.cyan)
+                           value: session.spo2Percent.map(String.init) ?? dash,
+                           rowIndex: 5,
+                           subvalue: session.spo2Percent != nil ? (session.spo2LatestTimeText ?? " ") : " ",
+                           valueSuffix: session.spo2Percent != nil ? "%" : nil)
             }
             divider
             distanceStatsRow(layout)
@@ -186,7 +199,7 @@ struct DashboardView: View {
         .padding(.horizontal, layout.gridHPadding)
     }
 
-    // Month 거리 글자 크기에 Year·Total 을 맞추고, km 는 작은 글씨.
+    // Month·Year·Total — km 단위는 값 아래 작은 글씨.
     private func distanceStatsRow(_ layout: DeviceLayout.Dashboard) -> some View {
         let month = fmt(session.thisMonthDistance, 0)
         let year = fmt(session.thisYearDistance, 0)
@@ -198,26 +211,20 @@ struct DashboardView: View {
             let footerHeight = layout.unitFont * 1.2
             let valueHeight = max(geo.size.height - labelHeight - footerHeight - 2, 10)
             let colWidth = max(geo.size.width / 3 - 4, 10)
-            let fontSize = MetricCell.fittedValueFontSize(
+            let fitted = MetricCell.fittedValueFontSize(
                 value: month,
-                suffix: " \(unit)",
-                suffixSmall: true,
                 maxWidth: colWidth,
-                maxHeight: valueHeight,
-                unitFont: layout.unitFont
+                maxHeight: valueHeight
             )
+            let fontSize = fitted * 0.82   // 누적 거리 행은 다른 행보다 약간 작게
 
             HStack(spacing: 0) {
-                MetricCell(label: "Month", value: month,
-                           valueSuffix: " \(unit)",
-                           fixedValueFontSize: fontSize,
-                           color: Theme.purple)
-                MetricCell(label: "Year", value: year,
-                           fixedValueFontSize: fontSize,
-                           color: Theme.purple)
-                MetricCell(label: "Total", value: total,
-                           fixedValueFontSize: fontSize,
-                           color: Theme.purple)
+                MetricCell(label: "Month", value: month, rowIndex: 6,
+                           unit: unit, fixedValueFontSize: fontSize)
+                MetricCell(label: "Year", value: year, rowIndex: 6,
+                           unit: unit, fixedValueFontSize: fontSize)
+                MetricCell(label: "Total", value: total, rowIndex: 6,
+                           unit: unit, fixedValueFontSize: fontSize)
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }

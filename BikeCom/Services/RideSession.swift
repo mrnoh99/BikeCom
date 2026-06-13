@@ -54,43 +54,127 @@ final class RideSession: ObservableObject {
     /// GPX 가져오기 진행/결과 표시.
     @Published var importStatus: String?
 
+    // MARK: 기준 코스(라이브 지도 오버레이 — 주행 중 따라가기)
+    /// 현재 라이브 지도에 겹쳐 보여줄 기준 코스(없으면 nil).
+    @Published private(set) var followCourseName: String?
+    /// 기준 코스의 GPS 경로(라이브 지도 오버레이용).
+    @Published private(set) var followCourseTrack: [CLLocationCoordinate2D] = []
+    private var followCourseID: UUID? {
+        didSet { UserDefaults.standard.set(followCourseID?.uuidString, forKey: "bike.followCourseID") }
+    }
+
+    /// 기준 코스를 선택해 라이브 지도에 오버레이한다(트랙은 디스크에서 지연 로드).
+    func setFollowCourse(_ record: RideRecord) {
+        followCourseID = record.id
+        followCourseName = (record.mapName?.isEmpty == false) ? record.mapName : record.name
+        store.loadTrack(for: record) { [weak self] coords in
+            self?.followCourseTrack = coords.map { $0.clCoordinate }
+        }
+    }
+
+    /// 기준 코스 해제.
+    func clearFollowCourse() {
+        followCourseID = nil
+        followCourseName = nil
+        followCourseTrack = []
+    }
+
+    /// 앱 재시작 후 마지막 기준 코스를 복원한다(레코드 로드 이후 호출).
+    func restoreFollowCourseIfNeeded() {
+        guard followCourseID == nil, followCourseTrack.isEmpty,
+              let s = UserDefaults.standard.string(forKey: "bike.followCourseID"),
+              let id = UUID(uuidString: s),
+              let rec = store.records.first(where: { $0.id == id }) else { return }
+        setFollowCourse(rec)
+    }
+
     /// 데이터 출처 통계(More 탭). 백그라운드에서 계산해 발행.
     @Published var dataStats: DataStats?
 
     /// 10분 미만 라이딩: 저장/삭제 결정 대기 중인 기록.
     @Published var pendingShortRide: RideRecord?
-    /// 저장(건강·캘린더·파일) 완료 요약 — 확인 알림 표시용.
-    @Published var saveSummary: String?
+
+    /// GPX/CSV 가져오기 후 "주행 데이터 / 지도 코스 자료" 선택 대기.
+    struct PendingImport: Identifiable {
+        let id = UUID()
+        var records: [RideRecord]
+        var scanned: Int
+    }
+    @Published var pendingImport: PendingImport?
+    /// 주행 종료 후 저장 진행(목록·건강·캘린더·파일).
+    @Published var saveProgress: RideSaveProgress?
+
+    struct RideSaveProgress: Identifiable {
+        let id = UUID()
+        let rideName: String
+        var steps: [Step]
+        var isComplete = false
+
+        struct Step: Identifiable {
+            let id: String
+            let title: String
+            var status: Status = .pending
+
+            enum Status {
+                case pending, running, success, failed
+            }
+        }
+
+        static func fresh(rideName: String) -> RideSaveProgress {
+            RideSaveProgress(rideName: rideName, steps: [
+                Step(id: "list", title: "라이딩 기록 저장"),
+                Step(id: "health", title: "건강 앱 저장"),
+                Step(id: "calendar", title: "캘린더 저장"),
+                Step(id: "file", title: "GPX 파일 저장"),
+            ])
+        }
+
+        mutating func setStep(_ stepID: String, status: Step.Status) {
+            guard let i = steps.firstIndex(where: { $0.id == stepID }) else { return }
+            steps[i].status = status
+        }
+
+        var failedCount: Int { steps.filter { $0.status == .failed }.count }
+    }
 
     /// Apple 건강의 사이클링 워크아웃을 **겹치지 않는 것만 보충**한다(시드 트랙 데이터가 기본).
     func importFromHealth() {
         importStatus = "건강에서 가져오는 중…"
-        healthImporter.importCyclingWorkouts { [weak self] records in
+        // 기존 기록(시드 Cyclemeter 등)과 겹치는 워크아웃은 경로 조회 전에 미리 제외(속도 핵심).
+        let existing = store.records
+        healthImporter.importCyclingWorkouts(skipIfDuplicate: { r in
+            existing.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) })
+        }, progress: { [weak self] done, total in
+            self?.importStatus = "건강에서 가져오는 중… \(done)/\(total)"
+        }, completion: { [weak self] records in
             guard let self else { return }
-            // 기존 기록(시드 Cyclemeter 등)과 겹치지 않는 건강 기록만 추가.
-            let added = records.filter { r in
-                !self.store.records.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) })
-            }
-            self.store.addMany(added)
-            self.importStatus = "건강 보충 완료: 겹치지 않는 \(added.count)개 추가 (워크아웃 \(records.count)개)"
+            self.store.addMany(records)
+            self.importStatus = "건강 보충 완료: 겹치지 않는 \(records.count)개 추가"
             self.refreshDataStats()
-        }
+        })
     }
 
     /// Routes 통합 정리 — Cyclemeter 시드(트랙 포함)+앱·GPX 를 기본으로 두고
     /// 겹치지 않는 Apple 건강 기록으로 보충, 5km 이하 일괄 삭제.
     func consolidateRoutes(minKeepKm: Double = 5) {
         importStatus = "기록 통합 정리 중…"
+        // 지도 코스 자료는 통합 정리 대상에서 제외하고 항상 보존한다.
+        let courses = store.records.filter { $0.isCourseOnly }
         // 기본: 앱 직접 기록 + GPX + Cyclemeter 시드(트랙 포함). (레거시 nil = 앱으로 간주)
         let base = store.records.filter {
+            guard !$0.isCourseOnly else { return false }
             let s = $0.source ?? .app
             return s == .app || s == .gpx || s == .cyclemeter
         }
-        healthImporter.importCyclingWorkouts { [weak self] healthRides in
+        healthImporter.importCyclingWorkouts(skipIfDuplicate: { r in
+            base.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) })
+        }, progress: { [weak self] done, total in
+            self?.importStatus = "기록 통합 정리 중… \(done)/\(total)"
+        }, completion: { [weak self] healthRides in
             guard let self else { return }
             DispatchQueue.main.async {
                 var result = base
-                // 겹치지 않는 건강 기록 보충.
+                // 겹치지 않는 건강 기록 보충(건강 기록끼리의 중복도 한 번 더 정리).
                 for r in healthRides where !result.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) }) {
                     result.append(r)
                 }
@@ -98,17 +182,17 @@ final class RideSession: ObservableObject {
                 result = result.filter { $0.distanceMeters > minKeepKm * 1000 }
                 let removed = before - result.count
                 result.sort { $0.startedAt > $1.startedAt }
-                self.store.replaceAll(result)
+                self.store.replaceAll(courses + result)   // 코스 자료는 맨 앞에 보존
                 self.health.refreshTotals()
                 self.importStatus = "정리 완료: \(result.count)개 기록 · 5km 이하 \(removed)개 삭제 (건강 후보 \(healthRides.count))"
                 self.refreshDataStats()
             }
-        }
+        })
     }
 
     /// More 탭 데이터 출처 통계를 백그라운드에서 계산해 발행한다.
     func refreshDataStats() {
-        let records = store.records
+        let records = store.records.filter { !$0.isCourseOnly }   // 코스 자료는 통계 제외
         let healthTotal = health.rideWorkouts.count   // Apple 건강 사이클링 워크아웃 총 수
         DispatchQueue.global(qos: .utility).async { [weak self] in
             var st = DataStats()
@@ -148,6 +232,7 @@ final class RideSession: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             var parsed: [RideRecord] = []
+            var readErrors = 0
             for url in urls {
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -159,33 +244,116 @@ final class RideSession: ObservableObject {
                     if let en = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil) {
                         for case let f as URL in en {
                             let ext = f.pathExtension.lowercased()
-                            if ext == "gpx" || ext == "csv" { files.append(f) }
+                            if ext == "gpx" || ext == "csv" || ext == "txt" || ext.isEmpty { files.append(f) }
                         }
                     }
                 } else {
                     files = [url]
                 }
                 for f in files {
-                    guard let data = try? Data(contentsOf: f) else { continue }
+                    guard let data = try? Data(contentsOf: f), !data.isEmpty else {
+                        readErrors += 1
+                        continue
+                    }
                     let name = f.deletingPathExtension().lastPathComponent
-                    switch f.pathExtension.lowercased() {
-                    case "gpx":
+                    switch detectImportKind(url: f, data: data) {
+                    case .gpx:
                         if let rec = GPXImporter.parse(data: data, fallbackName: name) {
                             parsed.append(rec)
                         }
-                    case "csv":
+                    case .csv:
                         parsed.append(contentsOf: CSVImporter.parse(data: data, fallbackName: name))
-                    default:
-                        break
+                    case .unknown:
+                        readErrors += 1
                     }
                 }
             }
             DispatchQueue.main.async {
-                let existing = Set(self.store.records.map { Int($0.startedAt.timeIntervalSince1970) })
-                let fresh = parsed.filter { !existing.contains(Int($0.startedAt.timeIntervalSince1970)) }
-                self.store.addMany(fresh)
-                self.importStatus = "가져오기 완료: \(fresh.count)개 추가 (스캔 \(parsed.count)개)"
+                guard !parsed.isEmpty else {
+                    self.importStatus = readErrors > 0
+                        ? "CSV/GPX 파일을 읽지 못했습니다. 파일 형식·인코딩을 확인하세요."
+                        : "가져올 라이딩이 없습니다."
+                    return
+                }
+                self.pendingImport = PendingImport(records: parsed, scanned: parsed.count)
+                self.importStatus = nil
             }
+        }
+    }
+
+    private enum ImportFileKind { case gpx, csv, unknown }
+
+    /// 확장자가 없거나 .txt 인 Files 앱 CSV 도 내용으로 판별한다.
+    private func detectImportKind(url: URL, data: Data) -> ImportFileKind {
+        switch url.pathExtension.lowercased() {
+        case "gpx": return .gpx
+        case "csv": return .csv
+        case "txt": return CSVImporter.canParse(data) ? .csv : .unknown
+        default: break
+        }
+        if let head = String(data: data.prefix(512), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           head.hasPrefix("<?xml") || head.hasPrefix("<gpx") {
+            return .gpx
+        }
+        if CSVImporter.canParse(data) { return .csv }
+        return .unknown
+    }
+
+    /// 가져오기 종류 선택 완료 처리.
+    /// asCourse=true: 지도 코스 자료(통계 제외, 목록 맨 위, 중복 허용).
+    /// asCourse=false: 주행 데이터(시각 기준 중복 제외 후 추가).
+    func finishPendingImport(asCourse: Bool) {
+        guard let pending = pendingImport else { return }
+        pendingImport = nil
+        if asCourse {
+            let courses = pending.records.map { rec -> RideRecord in
+                var r = rec
+                r.isCourseOnly = true
+                r.includeInMap = true
+                if r.mapName?.isEmpty != false { r.mapName = r.name }
+                return r
+            }
+            store.addMany(courses)
+            importStatus = "지도 코스 자료 \(courses.count)개 추가 (통계 제외)"
+        } else {
+            let existing = Set(store.records.filter { !$0.isCourseOnly }
+                .map { $0.startedAt.timeIntervalSince1970 })
+            let fresh = pending.records.filter { !existing.contains($0.startedAt.timeIntervalSince1970) }
+            store.addMany(fresh)
+            let skipped = pending.records.count - fresh.count
+            if fresh.isEmpty {
+                importStatus = "가져온 \(pending.scanned)개가 모두 기존 기록과 중복입니다."
+            } else if skipped > 0 {
+                importStatus = "가져오기 완료: \(fresh.count)개 추가 · 중복 \(skipped)개 제외"
+            } else {
+                importStatus = "가져오기 완료: \(fresh.count)개 추가"
+            }
+        }
+        refreshDataStats()
+    }
+
+    func cancelPendingImport() {
+        pendingImport = nil
+        importStatus = "가져오기 취소됨"
+    }
+
+    /// 주행 기록을 지도 코스로 복제한다(원본은 통계 유지, 복사본은 코스 전용·맨 위).
+    func addCourseCopy(of record: RideRecord, name: String? = nil) {
+        store.loadTrack(for: record) { [weak self] coords in
+            guard let self else { return }
+            let trimmed = (name ?? record.mapName ?? record.name).trimmingCharacters(in: .whitespacesAndNewlines)
+            let courseName = trimmed.isEmpty ? record.name : trimmed
+            let copy = RideRecord(
+                name: record.name, bikeName: record.bikeName, source: record.source,
+                location: record.location, startedAt: record.startedAt, duration: record.duration,
+                totalElapsed: record.totalElapsed, distanceMeters: record.distanceMeters,
+                averageSpeedMps: record.averageSpeedMps, maxSpeedMps: record.maxSpeedMps,
+                maxHeartRate: record.maxHeartRate, avgHeartRate: record.avgHeartRate,
+                maxCadence: record.maxCadence, track: coords,
+                includeInMap: true, mapName: courseName, isCourseOnly: true)
+            self.store.add(copy)
+            self.importStatus = "지도 코스로 추가됨: \(courseName)"
         }
     }
 
@@ -300,7 +468,9 @@ final class RideSession: ObservableObject {
         importBaselineHistoryIfNeeded()
     }
 
-    private static let baselineImportedKey = "bike.cyclemeterSeedV3"
+    // V4: 시드 트랙을 라이딩당 최대 150포인트로 다운샘플(메모리 대폭 절감). 기존 설치는
+    // 키가 바뀌면서 다음 실행에 조밀한 Cyclemeter 시드를 가벼운 시드로 교체 저장한다.
+    private static let baselineImportedKey = "bike.cyclemeterSeedV4"
 
     /// 앱 번들 Cyclemeter 시드(트랙 포함 JSON)를 1회 기본 기록으로 주입한다.
     /// 기존 Cyclemeter 기록은 제거 후 시드로 교체하고, 앱·건강·GPX 기록은 유지한다.
@@ -418,22 +588,48 @@ final class RideSession: ObservableObject {
         pendingShortRide = nil
     }
 
-    /// 건강·캘린더·파일 3가지 저장을 수행하고, 모두 끝나면 완료 요약을 발행한다.
+    /// 건강·캘린더·파일 3가지 저장을 수행하고, 단계별 진행을 발행한다.
     private func performSave(_ record: RideRecord) {
-        store.add(record)   // 앱 기록(목록·상세)
+        saveProgress = .fresh(rideName: record.name)
+        store.add(record)
+        setSaveStep("list", .success)
+        setSaveStep("health", .running)
+        setSaveStep("calendar", .running)
+        setSaveStep("file", .running)
+
         let group = DispatchGroup()
-        var healthOK = false, calendarOK = false, fileOK = false
         group.enter()
-        health.saveRide(record) { ok in healthOK = ok; group.leave() }
-        group.enter()
-        calendarLogger.logRide(record, bikeName: bikeName) { ok in calendarOK = ok; group.leave() }
-        group.enter()
-        GPXExporter.export(record) { url in fileOK = (url != nil); group.leave() }
-        group.notify(queue: .main) { [weak self] in
-            self?.health.refreshTotals()
-            func mark(_ ok: Bool) -> String { ok ? "✓" : "✗" }
-            self?.saveSummary = "건강 \(mark(healthOK))    캘린더 \(mark(calendarOK))    파일 \(mark(fileOK))"
+        health.saveRide(record) { [weak self] ok in
+            DispatchQueue.main.async { self?.setSaveStep("health", ok ? .success : .failed) }
+            group.leave()
         }
+        group.enter()
+        calendarLogger.logRide(record, bikeName: bikeName) { [weak self] ok in
+            DispatchQueue.main.async { self?.setSaveStep("calendar", ok ? .success : .failed) }
+            group.leave()
+        }
+        group.enter()
+        GPXExporter.export(record) { [weak self] url in
+            DispatchQueue.main.async { self?.setSaveStep("file", url != nil ? .success : .failed) }
+            group.leave()
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self else { return }
+            self.health.refreshTotals()
+            guard var p = self.saveProgress else { return }
+            p.isComplete = true
+            self.saveProgress = p
+        }
+    }
+
+    private func setSaveStep(_ stepID: String, _ status: RideSaveProgress.Step.Status) {
+        guard var p = saveProgress else { return }
+        p.setStep(stepID, status: status)
+        saveProgress = p
+    }
+
+    func dismissSaveProgress() {
+        saveProgress = nil
     }
 
     // MARK: - 표시용 계산값 (단위 변환)
@@ -464,7 +660,7 @@ final class RideSession: ObservableObject {
     /// 총 라이딩 시간(초) — Cyclemeter(로컬 JSON 기록) + Apple 건강 워크아웃을
     /// 시작 시각·시간 기준으로 중복 제거해 합산한다. 진행 중 라이딩은 실시간으로 더한다.
     var totalRideTime: TimeInterval {
-        let merged = RideTimeAggregator.totalRideTime(records: store.records,
+        let merged = RideTimeAggregator.totalRideTime(records: store.records.filter { !$0.isCourseOnly },
                                                       healthRides: health.rideWorkouts)
         return merged + (state == .idle ? 0 : rideSeconds)
     }
@@ -517,14 +713,15 @@ final class RideSession: ObservableObject {
     // MARK: - 내부
 
     private func tick() {
-        clock = Date()
-
         // 앱이 켜져 있는 동안 매 틱 화면 자동 잠금을 끈다(시스템이 초기화해도 항상 켜짐 유지).
         if !UIApplication.shared.isIdleTimerDisabled {
             UIApplication.shared.isIdleTimerDisabled = true
         }
 
+        // 라이딩 중이 아닐 땐 어떤 @Published 값도 갱신하지 않는다.
+        // (idle 상태에서 매 0.5초 session 이 바뀌면 전체 화면이 재렌더되어 탭이 씹히고 깜빡인다.)
         guard state == .running, let started = startedAt else { return }
+        clock = Date()
         totalSeconds = Date().timeIntervalSince(started)
         rideSeconds += 0.5
         if currentSpeedMps >= movingSpeedThresholdMps {

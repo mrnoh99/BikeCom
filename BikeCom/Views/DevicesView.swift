@@ -21,7 +21,7 @@ struct DevicesView: View {
                 }
                 sensorRow("속도", value: speedText, active: session.watch.watchSpeedMps != nil)
                 sensorRow("케이던스", value: cadenceText, active: session.watch.watchCadenceRPM != nil)
-                sensorRow("심박수", value: hrText, active: session.watch.heartRateBPM != nil)
+                sensorRow("심박수", value: hrText, active: session.watch.heartRateConnected)
             } header: {
                 Text("Apple Watch")
             } footer: {
@@ -62,7 +62,7 @@ struct DevicesView: View {
     }
 
     private var hrText: String {
-        guard let bpm = session.watch.heartRateBPM else { return "수신 대기" }
+        guard session.watch.heartRateConnected, let bpm = session.watch.heartRateBPM else { return "수신 대기" }
         return "\(bpm) bpm"
     }
 

@@ -13,6 +13,7 @@ final class WatchSensorManager: NSObject, ObservableObject {
     @Published private(set) var authorized = false
     @Published private(set) var speedSensorConnected = false
     @Published private(set) var cadenceSensorConnected = false
+    @Published private(set) var heartRateConnected = false
     @Published private(set) var statusMessage = "대기"
     @Published private(set) var lastError: String?
 
@@ -25,6 +26,7 @@ final class WatchSensorManager: NSObject, ObservableObject {
     private let sensorFreshness: TimeInterval = 5
     private var lastSpeedSensorAt: Date?
     private var lastCadenceSensorAt: Date?
+    private var lastHeartRateAt: Date?
     private var lastAnyDataAt: Date?
     private var freshnessTimer: AnyCancellable?
 
@@ -78,9 +80,11 @@ final class WatchSensorManager: NSObject, ObservableObject {
         watchCadenceRPM = nil
         lastSpeedSensorAt = nil
         lastCadenceSensorAt = nil
+        lastHeartRateAt = nil
         lastAnyDataAt = nil
         speedSensorConnected = false
         cadenceSensorConnected = false
+        heartRateConnected = false
         lastError = nil
 
         guard HKHealthStore.isHealthDataAvailable() else {
@@ -138,18 +142,28 @@ final class WatchSensorManager: NSObject, ObservableObject {
         watchCadenceRPM = nil
         lastSpeedSensorAt = nil
         lastCadenceSensorAt = nil
+        lastHeartRateAt = nil
         lastAnyDataAt = nil
         speedSensorConnected = false
         cadenceSensorConnected = false
+        heartRateConnected = false
         statusMessage = "대기"
     }
 
     private func refreshSensorConnectionFlags() {
         let now = Date()
-        speedSensorConnected = isFresh(lastSpeedSensorAt, now: now)
-        cadenceSensorConnected = isFresh(lastCadenceSensorAt, now: now)
+        // 값이 실제로 바뀔 때만 대입한다. (@Published 는 같은 값이어도 대입하면 objectWillChange 를
+        // 발행하므로, 0.5초마다 무조건 대입하면 상위 session 이 계속 갱신돼 화면이 깜빡인다.)
+        let speed = isFresh(lastSpeedSensorAt, now: now)
+        if speed != speedSensorConnected { speedSensorConnected = speed }
+        let cadence = isFresh(lastCadenceSensorAt, now: now)
+        if cadence != cadenceSensorConnected { cadenceSensorConnected = cadence }
+        let hr = isFresh(lastHeartRateAt, now: now)
+        if hr != heartRateConnected { heartRateConnected = hr }
+        if !hr, heartRateBPM != nil { heartRateBPM = nil }
         if let lastAnyDataAt, now.timeIntervalSince(lastAnyDataAt) <= sensorFreshness {
-            statusMessage = watchReachable ? "워치 데이터 수신 중" : "워치 데이터 수신(백그라운드)"
+            let msg = watchReachable ? "워치 데이터 수신 중" : "워치 데이터 수신(백그라운드)"
+            if msg != statusMessage { statusMessage = msg }
         }
     }
 
@@ -205,7 +219,9 @@ final class WatchSensorManager: NSObject, ObservableObject {
             self.lastAnyDataAt = Date()
 
             if let hr = WCPayload.int(message, "hr"), hr > 0 {
+                self.lastHeartRateAt = Date()
                 self.heartRateBPM = hr
+                self.heartRateConnected = true
             }
             if message["speedMps"] != nil {
                 self.lastSpeedSensorAt = Date()

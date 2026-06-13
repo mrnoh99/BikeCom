@@ -328,6 +328,10 @@ final class WorkoutManager: NSObject, ObservableObject {
         let s = WCSession.default
         guard s.activationState == .activated else { return }
 
+        // 페이로드에 없는 센서 키는 누적 컨텍스트에서 제거(끊긴 뒤 마지막 값 재전송 방지).
+        for key in ["hr", "speedMps", "cadence"] where payload[key] == nil {
+            outboundContext.removeValue(forKey: key)
+        }
         for (key, value) in payload {
             outboundContext[key] = value
         }

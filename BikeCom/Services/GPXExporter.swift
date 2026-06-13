@@ -40,7 +40,10 @@ enum GPXExporter {
 
     /// 앱의 전체 라이딩을 라이딩별 GPX 로 쓴 폴더를 만들고 .zip 으로 묶어 임시 URL 반환.
     /// (백그라운드 실행 권장; completion 은 메인 큐로 반환)
-    static func exportAllZip(_ records: [RideRecord], completion: @escaping (URL?, Int) -> Void) {
+    /// loadTrack: 라이딩별 GPS 트랙을 디스크에서 동기 로드(메모리에 전부 올리지 않고 한 건씩 처리).
+    static func exportAllZip(_ records: [RideRecord],
+                             loadTrack: @escaping (RideRecord) -> [RideRecord.Coordinate],
+                             completion: @escaping (URL?, Int) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let fm = FileManager.default
             let df = DateFormatter(); df.dateFormat = "yyyyMMdd-HHmm"
@@ -51,10 +54,12 @@ enum GPXExporter {
 
             var used = Set<String>(); var count = 0
             for r in records {
-                var stem = fileStem(r); var name = stem; var k = 1
+                let stem = fileStem(r); var name = stem; var k = 1
                 while used.contains(name.lowercased()) { name = "\(stem)-\(k)"; k += 1 }
                 used.insert(name.lowercased())
-                if let data = makeGPX(r).data(using: .utf8) {
+                var full = r
+                full.track = loadTrack(r)   // 한 건씩 로드 → GPX 작성 후 해제
+                if let data = makeGPX(full).data(using: .utf8) {
                     try? data.write(to: folder.appendingPathComponent("\(name).gpx"), options: .atomic)
                     count += 1
                 }

@@ -33,11 +33,18 @@ struct MoreView: View {
                         Spacer()
                         Text(formatDuration(session.totalRideTime)).foregroundColor(Theme.gold)
                     }
-                    HStack { Text("총 라이딩 수"); Spacer(); Text("\(session.store.records.count)").foregroundColor(.secondary) }
+                    HStack { Text("총 라이딩 수"); Spacer(); Text("\(session.store.records.filter { !$0.isCourseOnly }.count)").foregroundColor(.secondary) }
                 } header: {
                     Text("누적 통계")
                 } footer: {
                     Text("총 라이딩 시간은 Cyclemeter(가져온 JSON 기록)와 Apple 건강의 사이클링 운동을 시작 시각 기준으로 중복 없이 합산합니다.")
+                }
+                Section("지도 코스") {
+                    NavigationLink {
+                        CourseManagerView()
+                    } label: {
+                        Label("지도 코스 관리", systemImage: "map")
+                    }
                 }
                 dataSourceSection
                 Section("센서") {

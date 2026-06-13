@@ -1,6 +1,11 @@
 import SwiftUI
 import UIKit
 
+/// 대시보드 빈 값 표시(막대 1개).
+enum MetricDash {
+    static let symbol = "–"
+}
+
 /// 워치 BLE 센서 연결 표시(녹색=연결, 주황=대기 깜박임).
 enum SensorLinkStatus {
     case connected
@@ -29,63 +34,36 @@ private struct SensorLinkDot: View {
     }
 }
 
-/// 흰색·노란색이 아닌 숫자에 노란색 윤곽선을 입혀 가독성을 높인다(레이아웃 영향 없음).
-private struct NumberOutline: ViewModifier {
-    let valueColor: Color
-
-    private var outline: Color? {
-        // 흰색(Theme.value)·노란색(Theme.gold)은 윤곽선 없음.
-        (valueColor == Theme.value || valueColor == Theme.gold) ? nil : Theme.gold
-    }
-
-    func body(content: Content) -> some View {
-        if let outline {
-            let w: CGFloat = 1
-            content
-                .shadow(color: outline, radius: 0, x: w, y: 0)
-                .shadow(color: outline, radius: 0, x: -w, y: 0)
-                .shadow(color: outline, radius: 0, x: 0, y: w)
-                .shadow(color: outline, radius: 0, x: 0, y: -w)
-        } else {
-            content
-        }
-    }
-}
-
 /// 대시보드 셀 하나: 고정 크기 라벨 + 가용 공간을 채우는 데이터 값(+ 단위/보조값).
 struct MetricCell: View {
     @Environment(\.dashboardLayout) private var layout
 
     let label: String
     let value: String
-    /// 첫 열 하단 단위(km/h, bpm, rpm 등).
+    /// 행마다 흰색·노란색을 번갈아 적용(짝수=흰색, 홀수=노란색). 같은 행의 모든 열에 동일 값.
+    var rowIndex: Int = 0
+    /// 첫 열 하단 단위(km/h, bpm, rpm, km 등).
     var unit: String? = nil
     var subvalue: String? = nil
-    /// 값 뒤에 붙는 단위(%, km 등).
+    /// 값 뒤에 붙는 단위(%, km 등) — unit 과 동시 사용하지 않는다.
     var valueSuffix: String? = nil
-    /// true 이면 값보다 작은 글씨(예: %, km).
     var valueSuffixSmall: Bool = true
-    /// 지정 시 자동 확대 대신 고정 글자 크기(마지막 줄 Year·Total 등).
     var fixedValueFontSize: CGFloat? = nil
-    /// Speed·Cad 첫 열: 워치 센서 연결 상태 점.
     var sensorStatus: SensorLinkStatus? = nil
-    var color: Color = Theme.value
+
+    private var valueColor: Color { rowIndex.isMultiple(of: 2) ? Theme.value : Theme.gold }
 
     /// Month 열 기준으로 같은 행에 쓸 값 글자 크기를 계산한다.
     static func fittedValueFontSize(
         value: String,
-        suffix: String?,
-        suffixSmall: Bool,
         maxWidth: CGFloat,
-        maxHeight: CGFloat,
-        unitFont: CGFloat
+        maxHeight: CGFloat
     ) -> CGFloat {
         var lo: CGFloat = 8
         var hi = maxHeight
         while hi - lo > 0.5 {
             let mid = (lo + hi) / 2
-            if fits(value: value, suffix: suffix, suffixSmall: suffixSmall,
-                    fontSize: mid, maxWidth: maxWidth, maxHeight: maxHeight, unitFont: unitFont) {
+            if fits(value: value, fontSize: mid, maxWidth: maxWidth, maxHeight: maxHeight) {
                 lo = mid
             } else {
                 hi = mid
@@ -96,22 +74,14 @@ struct MetricCell: View {
 
     private static func fits(
         value: String,
-        suffix: String?,
-        suffixSmall: Bool,
         fontSize: CGFloat,
         maxWidth: CGFloat,
-        maxHeight: CGFloat,
-        unitFont: CGFloat
+        maxHeight: CGFloat
     ) -> Bool {
         let valueFont = metricUIFont(fontSize)
         let valueWidth = (value as NSString).size(withAttributes: [.font: valueFont]).width
-        var suffixWidth: CGFloat = 0
-        if let suffix {
-            let suffixSize = suffixSmall ? max(fontSize * 0.38, unitFont) : fontSize
-            suffixWidth = (suffix as NSString).size(withAttributes: [.font: metricUIFont(suffixSize)]).width + 1
-        }
         let lineHeight = valueFont.lineHeight
-        return valueWidth + suffixWidth <= maxWidth && lineHeight <= maxHeight
+        return valueWidth <= maxWidth && lineHeight <= maxHeight
     }
 
     private static func metricUIFont(_ size: CGFloat) -> UIFont {
@@ -151,22 +121,22 @@ struct MetricCell: View {
 
     private func valueBlock(valueHeight: CGFloat, valueWidth: CGFloat) -> some View {
         let fontSize = fixedValueFontSize ?? valueHeight
+        let isDash = value == MetricDash.symbol
         return HStack(alignment: .lastTextBaseline, spacing: 1) {
             Text(value)
-                .font(Theme.metricFont(fontSize))
+                .font(Theme.metricFont(isDash ? fontSize * 0.55 : fontSize))
             if let valueSuffix {
                 Text(valueSuffix)
                     .font(valueSuffixSmall
                           ? .system(size: max(fontSize * 0.38, layout.unitFont), weight: .semibold, design: .rounded)
                           : Theme.metricFont(fontSize))
-                    .foregroundColor(color)
+                    .foregroundColor(valueColor)
             }
         }
-        .foregroundColor(color)
-        .modifier(NumberOutline(valueColor: color))
+        .foregroundColor(valueColor)
         .lineLimit(1)
-        .minimumScaleFactor(0.01)
-        .allowsTightening(true)
+        .minimumScaleFactor(isDash ? 1 : 0.01)
+        .allowsTightening(!isDash)
         .frame(width: valueWidth, height: valueHeight)
     }
 

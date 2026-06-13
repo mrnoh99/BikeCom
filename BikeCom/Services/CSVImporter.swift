@@ -7,8 +7,7 @@ enum CSVImporter {
 
     /// CSV 파일 전체를 파싱해 0개 이상의 RideRecord 를 반환한다.
     static func parse(data: Data, fallbackName: String) -> [RideRecord] {
-        guard var text = String(data: data, encoding: .utf8)
-            ?? String(data: data, encoding: .utf16) else { return [] }
+        guard var text = decodeText(from: data) else { return [] }
         if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return [] }
@@ -17,9 +16,11 @@ enum CSVImporter {
         let rows = parseCSV(text, delimiter: delimiter)
         guard rows.count >= 2 else { return [] }
 
-        let headers = rows[0]
+        let headerIndex = findHeaderRow(in: rows)
+        let headers = rows[headerIndex]
         let map = columnMap(headers)
-        let dataRows = Array(rows.dropFirst()).filter { !$0.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty } }
+        let dataRows = Array(rows.dropFirst(headerIndex + 1))
+            .filter { !$0.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty } }
 
         if map[.lat] != nil, map[.lon] != nil {
             if let ride = parseTrackRows(dataRows, map: map, fallbackName: fallbackName) {
@@ -28,6 +29,46 @@ enum CSVImporter {
         }
 
         return dataRows.compactMap { parseSummaryRow($0, map: map, headers: headers, fallbackName: fallbackName) }
+    }
+
+    /// 파일 내용이 CSV 로 보이는지(헤더 행 탐색).
+    static func canParse(_ data: Data) -> Bool {
+        guard let text = decodeText(from: data) else { return false }
+        let rows = parseCSV(text.trimmingCharacters(in: .whitespacesAndNewlines), delimiter: detectDelimiter(text))
+        guard rows.count >= 2 else { return false }
+        let map = columnMap(rows[findHeaderRow(in: rows)])
+        return map[.date] != nil || map[.start] != nil || (map[.lat] != nil && map[.lon] != nil)
+    }
+
+    /// UTF-8·UTF-16·EUC-KR 등 여러 인코딩을 시도한다.
+    static func decodeText(from data: Data) -> String? {
+        let encodings: [String.Encoding] = [
+            .utf8,
+            .utf16,
+            .isoLatin1,
+            .windowsCP1252,
+            .ascii,
+            String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(0x0422))) // EUC-KR
+        ]
+        for enc in encodings {
+            if let s = String(data: data, encoding: enc), !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return s
+            }
+        }
+        return nil
+    }
+
+    /// 메타 줄이 앞에 있는 내보내기에서 실제 헤더 행을 찾는다.
+    private static func findHeaderRow(in rows: [[String]]) -> Int {
+        let limit = min(rows.count, 8)
+        for i in 0..<limit {
+            let map = columnMap(rows[i])
+            let hasDate = map[.date] != nil || map[.start] != nil
+            let hasDistance = map[.distance] != nil
+            let hasTrack = map[.lat] != nil && map[.lon] != nil
+            if hasDate && (hasDistance || hasTrack) { return i }
+        }
+        return 0
     }
 
     // MARK: - Summary (한 행 = 라이딩)
@@ -228,8 +269,8 @@ enum CSVImporter {
             .name: ["name"],
             .activity: ["activity"],
             .distance: ["distance", "dist", "distancekm", "distancemi", "odometer"],
-            .time: ["timestamp"],
-            .duration: ["duration", "ridetime", "activitytime", "time"],
+            .time: ["time", "timestamp"],
+            .duration: ["duration", "ridetime", "activitytime", "movingtime", "elapsedtime"],
             .durationSecs: ["timesecs", "durationsecs", "movingtimesecs", "elapsedsecs"],
             .movingTime: ["movingtime", "movetime"],
             .elapsed: ["elapsedtime", "elapsed", "totaltime"],
@@ -361,9 +402,11 @@ enum CSVImporter {
                 let s = Double(parts[2]) ?? 0
                 return h * 3600 + m * 60 + s
             case 2:
-                let m = Double(parts[0]) ?? 0
-                let s = Double(parts[1]) ?? 0
-                return m * 60 + s
+                let a = Double(parts[0]) ?? 0
+                let b = Double(parts[1]) ?? 0
+                // Cyclemeter RideTime 은 H:MM (예: 2:50 = 2시간 50분).
+                if b < 60 { return a * 3600 + b * 60 }
+                return a * 60 + b
             default:
                 break
             }

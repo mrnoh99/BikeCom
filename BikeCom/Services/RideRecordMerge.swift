@@ -7,20 +7,31 @@ enum RideRecordMerge {
     /// `incomingWins == true` 이면 같은 시작 시각의 기존 기록을 incoming 으로 교체(Health 우선).
     /// `false` 이면 기존 기록을 유지하고 없는 키만 추가(베이스라인 최초 주입).
     static func merge(existing: [RideRecord], incoming: [RideRecord], incomingWins: Bool) -> [RideRecord] {
-        var byStart = Dictionary(uniqueKeysWithValues: existing.map { (startKey(for: $0.startedAt), $0) })
-        for rec in incoming {
+        // 지도 코스 자료는 병합/중복 제거 대상에서 제외하고 항상 보존한다(같은 시작 시각 복사본 허용).
+        let courses = (existing + incoming).filter { $0.isCourseOnly }
+        let mergeable = existing.filter { !$0.isCourseOnly }
+        // 같은 시작 시각이 둘 이상이어도 크래시하지 않도록 uniquingKeysWith 사용(먼저 것 유지).
+        var byStart = Dictionary(mergeable.map { (startKey(for: $0.startedAt), $0) },
+                                 uniquingKeysWith: { first, _ in first })
+        for rec in incoming where !rec.isCourseOnly {
             let key = startKey(for: rec.startedAt)
             if incomingWins || byStart[key] == nil {
                 byStart[key] = rec
             }
         }
-        return byStart.values.sorted { $0.startedAt > $1.startedAt }
+        return courses + byStart.values.sorted { $0.startedAt > $1.startedAt }
     }
 
-    /// 두 기록이 같은 라이딩인지(소스가 달라도). 시작 시각 ±180초 + 라이딩 시간 ±120초.
+    /// 두 기록이 같은 라이딩인지(소스가 달라도). 시작 시각 ±180초 +
+    /// 활동시간(duration) 또는 전체시간(totalElapsed) 중 하나가 ±120초 안이면 같은 라이딩으로 본다.
+    /// (앱이 건강에 저장한 워크아웃은 일시정지 포함 전체시간이 duration 으로 들어오므로,
+    ///  활동시간만 비교하면 일시정지가 긴 라이딩이 재가져오기 때 중복으로 남는 문제를 막는다.)
     static func isDuplicate(_ a: RideRecord, of b: RideRecord) -> Bool {
-        abs(a.startedAt.timeIntervalSince(b.startedAt)) <= 180 &&
-        abs(a.duration - b.duration) <= 120
+        guard abs(a.startedAt.timeIntervalSince(b.startedAt)) <= 180 else { return false }
+        if abs(a.duration - b.duration) <= 120 { return true }
+        // 전체시간은 둘 다 기록된 경우에만 비교(legacy 기록은 0이라 비교 제외).
+        return a.totalElapsed > 0 && b.totalElapsed > 0 &&
+               abs(a.totalElapsed - b.totalElapsed) <= 120
     }
 }
 

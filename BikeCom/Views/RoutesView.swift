@@ -30,12 +30,25 @@ private let routeDateFormatter: DateFormatter = {
 struct RideRow: View {
     let record: RideRecord
     let unit: DistanceUnit
-    private var hasGPS: Bool { record.track.count > 1 }
+    @State private var startPlace = ""
+    @State private var endPlace = ""
+    private var hasGPS: Bool { record.trackCount > 1 }
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text(record.name).font(.system(size: 16, weight: .semibold))
+                if record.isCourseOnly {
+                    Image(systemName: "map.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Theme.gold)
+                }
+                Text(record.isCourseOnly ? (record.mapName ?? record.name) : record.name)
+                    .font(.system(size: 16, weight: .semibold))
                 Spacer(minLength: 0)
+                if record.isCourseOnly {
+                    Text("코스").font(.system(size: 10, weight: .bold)).foregroundColor(.black)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(Theme.gold))
+                }
                 // GPS 유무 표시
                 Image(systemName: hasGPS ? "mappin.and.ellipse" : "mappin.slash")
                     .font(.system(size: 12, weight: .semibold))
@@ -49,8 +62,27 @@ struct RideRow: View {
             .font(.caption).foregroundColor(.secondary)
             Text(routeDateFormatter.string(from: record.startedAt))
                 .font(.caption2).foregroundColor(.secondary)
+            if hasGPS {
+                HStack(spacing: 6) {
+                    Image(systemName: "smallcircle.filled.circle").foregroundColor(Theme.green)
+                    Text(startPlace.isEmpty ? "출발 …" : "출발 \(startPlace)")
+                    Image(systemName: "arrow.right").foregroundColor(.secondary)
+                    Image(systemName: "mappin.circle.fill").foregroundColor(Theme.red)
+                    Text(endPlace.isEmpty ? "도착 …" : "도착 \(endPlace)")
+                }
+                .font(.caption2).foregroundColor(.secondary).lineLimit(1)
+            }
         }
         .padding(.vertical, 2)
+        .task {
+            guard hasGPS else { return }
+            if startPlace.isEmpty, let s = record.startCoord {
+                startPlace = await PlaceNameCache.shared.name(for: s.clCoordinate)
+            }
+            if endPlace.isEmpty, let e = record.endCoord {
+                endPlace = await PlaceNameCache.shared.name(for: e.clCoordinate)
+            }
+        }
     }
 }
 
@@ -68,9 +100,10 @@ struct RoutesView: View {
     @AppStorage(RideStore.lastBackupKey) private var lastBackupAt: Double = 0
 
     private var importTypes: [UTType] {
-        [UTType(filenameExtension: "gpx") ?? .xml,
-         UTType(filenameExtension: "csv") ?? .commaSeparatedText,
-         .xml, .commaSeparatedText, .folder]
+        var types: [UTType] = [.commaSeparatedText, .plainText, .xml, .folder]
+        if let gpx = UTType(filenameExtension: "gpx") { types.insert(gpx, at: 0) }
+        if let csv = UTType(filenameExtension: "csv") { types.insert(csv, at: 0) }
+        return types
     }
 
     var body: some View {
@@ -104,16 +137,21 @@ struct RoutesView: View {
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { session.importRideFiles(from: urls) }
         }
-        .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.json],
-                      allowsMultipleSelection: false) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                let total = session.store.restoreBackup(from: url)
-                session.importStatus = total > 0
-                    ? "백업 복원 완료 · 현재 \(total)건"
-                    : "복원 실패 (백업 파일 형식 확인)"
-                session.refreshDataStats()
-            }
-        }
+        // 같은 뷰에 fileImporter 가 둘이면 SwiftUI 가 충돌해 먼저 것이 안 열린다.
+        // 백업 importer 는 별도 뷰 노드(background)에 붙여 분리한다.
+        .background(
+            Color.clear
+                .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.json],
+                              allowsMultipleSelection: false) { result in
+                    if case .success(let urls) = result, let url = urls.first {
+                        let total = session.store.restoreBackup(from: url)
+                        session.importStatus = total > 0
+                            ? "백업 복원 완료 · 현재 \(total)건"
+                            : "복원 실패 (백업 파일 형식 확인)"
+                        session.refreshDataStats()
+                    }
+                }
+        )
         .confirmationDialog("기록 통합 정리", isPresented: $showConsolidateConfirm, titleVisibility: .visible) {
             Button("정리 실행 (5km 이하 삭제)", role: .destructive) { session.consolidateRoutes() }
             Button("취소", role: .cancel) {}
@@ -122,6 +160,12 @@ struct RoutesView: View {
         }
         .sheet(item: $exportFile) { f in
             ActivityView(items: [f.url])
+        }
+        .sheet(item: $session.pendingImport) { pending in
+            ImportChoiceSheet(scanned: pending.scanned)
+                .environmentObject(session)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -189,7 +233,8 @@ struct RoutesView: View {
         guard !exporting else { return }
         exporting = true
         session.importStatus = "전체 내보내는 중… (\(session.store.records.count)건)"
-        GPXExporter.exportAllZip(session.store.records) { url, count in
+        GPXExporter.exportAllZip(session.store.records,
+                                 loadTrack: { [store = session.store] in store.loadTrackSync($0) }) { url, count in
             exporting = false
             if let url {
                 session.importStatus = "내보내기 준비됨: GPX \(count)개 → 공유 시트에서 저장/전송"
@@ -218,9 +263,9 @@ struct RoutesView: View {
         }
     }
 
-    // 평면 목록(정렬 적용)
+    // 평면 목록(정렬 적용 — 지도 코스 자료는 항상 맨 위)
     private var flatList: some View {
-        let records = sort.sorted(session.store.records)
+        let records = pinnedCourses(sort.sorted(session.store.records))
         return List {
             ForEach(records) { record in
                 NavigationLink {
@@ -228,10 +273,28 @@ struct RoutesView: View {
                 } label: {
                     RideRow(record: record, unit: session.unit)
                 }
+                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    courseSwipeButton(record)
+                }
             }
             .onDelete { idx in
                 idx.map { records[$0] }.forEach { session.store.delete($0) }
             }
+        }
+    }
+
+    /// 지도 코스 자료(isCourseOnly)를 목록 맨 위로 고정한다.
+    private func pinnedCourses(_ recs: [RideRecord]) -> [RideRecord] {
+        recs.filter { $0.isCourseOnly } + recs.filter { !$0.isCourseOnly }
+    }
+
+    /// 주행 기록을 지도 코스로 복사(통계 제외 복사본 생성). 코스 자료엔 표시하지 않음.
+    @ViewBuilder private func courseSwipeButton(_ record: RideRecord) -> some View {
+        if !record.isCourseOnly && record.trackCount > 1 {
+            Button { session.addCourseCopy(of: record) } label: {
+                Label("지도 코스로", systemImage: "map")
+            }
+            .tint(Theme.gold)
         }
     }
 
@@ -250,7 +313,7 @@ struct RoutesView: View {
             } footer: {
                 Text("시작·끝 위치가 이 반경 안이고 거리가 비슷하면 같은 코스로 묶습니다.")
             }
-            ForEach(RouteGrouping.groups(session.store.records, radiusMeters: bucketMeters)) { group in
+            ForEach(RouteGrouping.groups(session.store.records.filter { !$0.isCourseOnly }, radiusMeters: bucketMeters)) { group in
                 NavigationLink {
                     RouteGroupView(group: group, sort: sort)
                 } label: {
@@ -262,7 +325,7 @@ struct RoutesView: View {
 
     private func groupRow(_ g: RouteGroup) -> some View {
         HStack(spacing: 12) {
-            RouteThumbnail(coords: (g.representative?.track ?? []).map { $0.clCoordinate })
+            LazyRouteThumbnail(record: g.representative)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(g.title).font(.system(size: 16, weight: .semibold))
@@ -352,6 +415,14 @@ struct RouteGroupView: View {
                             }
                         }
                     }
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        if !record.isCourseOnly && record.trackCount > 1 {
+                            Button { session.addCourseCopy(of: record) } label: {
+                                Label("지도 코스로", systemImage: "map")
+                            }
+                            .tint(Theme.gold)
+                        }
+                    }
                 }
                 .onDelete { idx in
                     let arr = sort.sorted(group.rides)
@@ -401,7 +472,7 @@ struct RouteGroup: Identifiable {
     var bestAvgSpeedRideID: RideRecord.ID? { rides.max { $0.averageSpeedMps < $1.averageSpeedMps }?.id }
     /// 썸네일용 대표 라이딩(트랙 점이 가장 많은 것).
     var representative: RideRecord? {
-        rides.filter { !$0.track.isEmpty }.max { $0.track.count < $1.track.count }
+        rides.filter { $0.trackCount > 1 }.max { $0.trackCount < $1.trackCount }
     }
     /// 시간대 기반 자동 라벨(출근/퇴근). 강한 다수일 때만.
     var commuteLabel: String? {
@@ -439,7 +510,7 @@ enum RouteGrouping {
     }
 
     private static func signature(_ r: RideRecord, radiusMeters: Double) -> String? {
-        guard let s = r.track.first, let e = r.track.last else { return nil }
+        guard let s = r.startCoord, let e = r.endCoord else { return nil }
         let dk = Int((r.distanceMeters / 1000).rounded())
         return "\(cell(s.lat, s.lon, radiusMeters))|\(cell(e.lat, e.lon, radiusMeters))|\(dk)km"
     }
@@ -466,16 +537,21 @@ struct RideDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let unit: DistanceUnit
     @State private var record: RideRecord
+    @State private var loadedTrack: [RideRecord.Coordinate] = []
     @State private var gpxURL: URL?
     @State private var showEdit = false
     @State private var showDeleteConfirm = false
+    @State private var startPlace = ""
+    @State private var endPlace = ""
+    @State private var mapNameDraft = ""
 
     init(record: RideRecord, unit: DistanceUnit) {
         _record = State(initialValue: record)
+        _mapNameDraft = State(initialValue: record.mapName ?? "")
         self.unit = unit
     }
 
-    private var coords: [CLLocationCoordinate2D] { record.track.map { $0.clCoordinate } }
+    private var coords: [CLLocationCoordinate2D] { loadedTrack.map { $0.clCoordinate } }
 
     var body: some View {
         ScrollView {
@@ -485,6 +561,8 @@ struct RideDetailView: View {
                     StaticRouteMap(track: coords)
                         .frame(height: 260)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else if record.trackCount > 1 {
+                    loadingTrackPlaceholder
                 } else {
                     emptyTrackPlaceholder
                 }
@@ -494,6 +572,19 @@ struct RideDetailView: View {
                     Text(record.name).font(.system(size: 20, weight: .bold))
                     Text(record.bikeName?.isEmpty == false ? record.bikeName! : "자전거 미지정")
                         .font(.subheadline).foregroundColor(.secondary)
+                    Text(routeDateFormatter.string(from: record.startedAt))
+                        .font(.caption).foregroundColor(.secondary)
+                    if record.trackCount > 1 {
+                        HStack(spacing: 6) {
+                            Image(systemName: "smallcircle.filled.circle").foregroundColor(Theme.green)
+                            Text(startPlace.isEmpty ? "출발 …" : "출발 \(startPlace)")
+                            Image(systemName: "arrow.right").foregroundColor(.secondary)
+                            Image(systemName: "mappin.circle.fill").foregroundColor(Theme.red)
+                            Text(endPlace.isEmpty ? "도착 …" : "도착 \(endPlace)")
+                        }
+                        .font(.caption).foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    }
                 }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -507,6 +598,8 @@ struct RideDetailView: View {
                     stat("총 경과", formatDuration(record.totalElapsed), Theme.value)
                 }
                 .padding(.horizontal)
+
+                if record.trackCount > 1 { mapCourseCard }
 
                 if let gpxURL {
                     ShareLink(item: gpxURL) {
@@ -550,7 +643,8 @@ struct RideDetailView: View {
             RideEditSheet(record: record) { updated in
                 session.store.update(updated)
                 record = updated
-                gpxURL = GPXExporter.writeTempGPX(updated)
+                var rec = updated; rec.track = loadedTrack
+                gpxURL = GPXExporter.writeTempGPX(rec)
             }
         }
         // 3. 삭제 확인
@@ -563,7 +657,92 @@ struct RideDetailView: View {
         } message: {
             Text("삭제하면 목록에서 제거됩니다. (Apple 건강·캘린더 기록은 영향받지 않습니다)")
         }
-        .onAppear { if gpxURL == nil { gpxURL = GPXExporter.writeTempGPX(record) } }
+        .onAppear {
+            guard loadedTrack.isEmpty, record.trackCount > 0 else { return }
+            session.store.loadTrack(for: record) { t in
+                loadedTrack = t
+                var rec = record; rec.track = t
+                gpxURL = GPXExporter.writeTempGPX(rec)
+            }
+        }
+        .task {
+            guard record.trackCount > 1 else { return }
+            if startPlace.isEmpty, let s = record.startCoord {
+                startPlace = await PlaceNameCache.shared.name(for: s.clCoordinate)
+            }
+            if endPlace.isEmpty, let e = record.endCoord {
+                endPlace = await PlaceNameCache.shared.name(for: e.clCoordinate)
+            }
+        }
+    }
+
+    /// 지도 코스 카드.
+    /// - 코스 자료(isCourseOnly): 이름 변경 (통계 제외 안내)
+    /// - 일반 주행 기록: '지도 코스로 복사 추가' (원본은 통계 유지)
+    @ViewBuilder private var mapCourseCard: some View {
+        if record.isCourseOnly {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "map.fill").foregroundColor(Theme.gold)
+                    Text("지도 코스 자료").font(.subheadline)
+                    Spacer()
+                    Text("주행 통계 제외").font(.caption2).foregroundColor(.secondary)
+                }
+                TextField("코스 이름", text: $mapNameDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .submitLabel(.done)
+                    .onSubmit { renameCourse() }
+                Text("Map 탭 코스 목록·라이브 따라가기에 이 이름으로 표시됩니다.")
+                    .font(.caption2).foregroundColor(.secondary)
+            }
+            .padding()
+            .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal)
+        } else if record.trackCount > 1 {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "map").foregroundColor(.secondary)
+                    Text("지도 코스로 추가").font(.subheadline)
+                    Spacer()
+                }
+                TextField("코스 이름 (비우면 코스명 사용)", text: $mapNameDraft)
+                    .textFieldStyle(.roundedBorder)
+                Button {
+                    session.addCourseCopy(of: record, name: mapNameDraft)
+                } label: {
+                    Label("지도 코스로 복사 추가", systemImage: "plus.rectangle.on.folder")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity).frame(height: 44)
+                        .background(Theme.gold.opacity(0.18), in: Capsule())
+                }
+                .tint(Theme.gold)
+                Text("원본 주행 기록은 통계에 그대로 두고, 통계에 포함하지 않는 코스 복사본을 만들어 목록 맨 위에 둡니다.")
+                    .font(.caption2).foregroundColor(.secondary)
+            }
+            .padding()
+            .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal)
+        }
+    }
+
+    private func renameCourse() {
+        var r = record
+        let m = mapNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        r.mapName = m.isEmpty ? nil : m
+        r.track = []          // 요약본만 갱신(트랙 파일 보존)
+        session.store.update(r)
+        record = r
+    }
+
+    private var loadingTrackPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.1))
+            VStack(spacing: 8) {
+                ProgressView()
+                Text("경로 불러오는 중…").font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .frame(height: 260)
     }
 
     private var emptyTrackPlaceholder: some View {
@@ -648,6 +827,21 @@ struct RideEditSheet: View {
     }
 }
 
+/// 대표 라이딩의 트랙을 디스크에서 지연 로드해 썸네일을 그린다.
+struct LazyRouteThumbnail: View {
+    @EnvironmentObject var session: RideSession
+    let record: RideRecord?
+    @State private var coords: [CLLocationCoordinate2D] = []
+
+    var body: some View {
+        RouteThumbnail(coords: coords)
+            .task(id: record?.id) {
+                guard let record, record.trackCount > 1 else { return }
+                session.store.loadTrack(for: record) { coords = $0.map { $0.clCoordinate } }
+            }
+    }
+}
+
 /// 코스 대표 경로의 지도 썸네일(MKMapSnapshotter 로 1회 렌더 후 캐시).
 struct RouteThumbnail: View {
     let coords: [CLLocationCoordinate2D]
@@ -721,6 +915,47 @@ struct RouteThumbnail: View {
 struct ExportFile: Identifiable {
     let id = UUID()
     let url: URL
+}
+
+/// GPX/CSV 가져온 뒤 주행 데이터 vs 지도 코스 자료 선택.
+private struct ImportChoiceSheet: View {
+    @EnvironmentObject var session: RideSession
+    let scanned: Int
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "square.and.arrow.down")
+                .font(.system(size: 40))
+                .foregroundColor(Theme.gold)
+            Text("가져온 파일 종류 선택")
+                .font(.title3.bold())
+                .foregroundColor(.white)
+            Text("\(scanned)개를 가져왔습니다.")
+                .font(.subheadline)
+                .foregroundColor(Theme.label)
+            VStack(alignment: .leading, spacing: 8) {
+                Label("주행 데이터: 거리·시간 통계에 포함", systemImage: "bicycle")
+                Label("지도 코스 자료: 통계 제외, 목록 맨 위", systemImage: "map")
+            }
+            .font(.footnote)
+            .foregroundColor(Theme.label)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.10)))
+
+            Button("주행 데이터로 추가") { session.finishPendingImport(asCourse: false) }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.green)
+            Button("지도 코스 자료로 추가") { session.finishPendingImport(asCourse: true) }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.gold)
+            Button("취소", role: .cancel) { session.cancelPendingImport() }
+                .foregroundColor(Theme.label)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.background)
+    }
 }
 
 /// 공유 시트(UIActivityViewController) 래퍼.

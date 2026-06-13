@@ -164,10 +164,17 @@ final class HealthStore: ObservableObject {
         builder.beginCollection(withStart: start) { [weak self] ok, _ in
             guard ok else { completion?(false); return }
             let finish = {
-                builder.endCollection(withEnd: end) { _, _ in
-                    builder.finishWorkout { workout, _ in
-                        if let workout { self?.saveRoute(record, to: workout) }
-                        DispatchQueue.main.async { self?.refreshTotals(); completion?(workout != nil) }
+                // 같은 라이딩을 다시 저장해도 건강 앱이 중복 생성 대신 교체하도록 sync 식별자를 부여한다.
+                let meta: [String: Any] = [
+                    HKMetadataKeySyncIdentifier: record.id.uuidString,
+                    HKMetadataKeySyncVersion: 1
+                ]
+                builder.addMetadata(meta) { _, _ in
+                    builder.endCollection(withEnd: end) { _, _ in
+                        builder.finishWorkout { workout, _ in
+                            if let workout { self?.saveRoute(record, to: workout) }
+                            DispatchQueue.main.async { self?.refreshTotals(); completion?(workout != nil) }
+                        }
                     }
                 }
             }
