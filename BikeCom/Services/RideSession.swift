@@ -464,6 +464,19 @@ final class RideSession: ObservableObject {
 
         location.requestAuthorization()
         watch.requestAuthorization()
+
+        // 워치 CONNECT/DISCONNECT 는 폰에 '요청'만 보낸다. 폰 ride 상태가 단일 기준이며,
+        // 폰이 ride 를 시작/종료하면 그 레벨을 워치가 따라가 세션을 켜고/끈다(desync 방지).
+        watch.onWatchRequest = { [weak self] start in
+            guard let self else { return }
+            if start {
+                if self.state != .running { self.start() }   // idle→시작, paused→재개
+            } else {
+                if self.state != .idle { self.finish() }
+            }
+        }
+        watch.isRideActive = { [weak self] in (self?.state ?? .idle) != .idle }
+
         health.start()   // Apple Health 누적 거리 관찰 시작
         importBaselineHistoryIfNeeded()
     }

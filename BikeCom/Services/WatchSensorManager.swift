@@ -22,6 +22,15 @@ final class WatchSensorManager: NSObject, ObservableObject {
 
     private(set) var didReceiveWatchDataThisRide = false
 
+    // MARK: 워크아웃 동기화 (폰이 단일 권위; 워치는 이 레벨을 따라감)
+    /// 워치 버튼(CONNECT/DISCONNECT)이 보낸 요청을 RideSession 으로 전달한다.
+    /// true = 시작 요청, false = 정지 요청.
+    var onWatchRequest: ((Bool) -> Void)?
+    /// 현재 폰 ride 가 진행 중인지(활성화 시 권위 상태 재방송용).
+    var isRideActive: () -> Bool = { false }
+    /// 권위 상태 토큰(타임스탬프). 워치는 더 새 토큰만 채택한다(재시작·재생 안전).
+    private var workoutToken: Double = 0
+
     private let healthStore = HKHealthStore()
     private let sensorFreshness: TimeInterval = 5
     private var lastSpeedSensorAt: Date?
@@ -98,7 +107,22 @@ final class WatchSensorManager: NSObject, ObservableObject {
         config.locationType = .outdoor
 
         statusMessage = "워치 앱 실행 중…"
-        launchWatchApp(config: config, attempt: 1)
+        broadcastWorkoutActive(true)        // 권위 상태 = 활성 (워치가 따라 세션 시작)
+        launchWatchApp(config: config, attempt: 1)   // 워치 앱을 깨워 방송을 받게 함
+    }
+
+    /// 폰의 권위 워크아웃 상태를 워치로 방송한다.
+    /// applicationContext(영구)로 항상 저장하고, reachable 이면 sendMessage 로 즉시도 보낸다.
+    /// 워치는 더 새 토큰만 채택해 정합하므로 재생·중복에 안전하다.
+    private func broadcastWorkoutActive(_ active: Bool) {
+        let s = WCSession.default
+        guard s.activationState == .activated else { return }
+        workoutToken = Date().timeIntervalSince1970
+        let payload: [String: Any] = ["workoutActive": active, "wToken": workoutToken]
+        try? s.updateApplicationContext(payload)
+        if s.isReachable {
+            s.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        }
     }
 
     private func launchWatchApp(config: HKWorkoutConfiguration, attempt: Int) {
@@ -114,7 +138,7 @@ final class WatchSensorManager: NSObject, ObservableObject {
                 if success {
                     self.lastError = nil
                     self.statusMessage = "워치 워크아웃 대기"
-                    self.send(["command": "start"])
+                    // 시작은 broadcastWorkoutActive(true) 가 담당(레벨 기반). 여기선 깨우기만.
                     return
                 }
                 self.lastError = """
@@ -136,7 +160,7 @@ final class WatchSensorManager: NSObject, ObservableObject {
     }
 
     func stopWatchWorkout() {
-        send(["command": "stop"])
+        broadcastWorkoutActive(false)       // 권위 상태 = 비활성 (워치가 따라 세션 종료)
         heartRateBPM = nil
         watchSpeedMps = nil
         watchCadenceRPM = nil
@@ -176,26 +200,11 @@ final class WatchSensorManager: NSObject, ObservableObject {
         return now.timeIntervalSince(date) <= sensorFreshness
     }
 
-    private func send(_ payload: [String: Any]) {
-        let s = WCSession.default
-        guard s.activationState == .activated else {
-            lastError = "WatchConnectivity 미활성"
-            return
-        }
-        if s.isReachable {
-            s.sendMessage(payload, replyHandler: nil) { [weak self] error in
-                DispatchQueue.main.async { self?.lastError = error.localizedDescription }
-            }
-        } else {
-            do {
-                try s.updateApplicationContext(payload)
-            } catch {
-                DispatchQueue.main.async { self.lastError = error.localizedDescription }
-            }
-        }
-    }
-
     private func handle(_ message: [String: Any]) {
+        // 워치 버튼(CONNECT/DISCONNECT) 요청 → RideSession 으로 전달(폰이 ride 를 시작/종료).
+        if let req = message["workoutRequest"] as? Bool {
+            DispatchQueue.main.async { self.onWatchRequest?(req) }
+        }
         if let err = message["workoutError"] as? String {
             DispatchQueue.main.async {
                 self.lastError = err
@@ -257,6 +266,8 @@ extension WatchSensorManager: WCSessionDelegate {
                 self.statusMessage = session.isPaired ? "Watch 연결됨" : "Watch 미페어링"
                 let ctx = session.receivedApplicationContext
                 if !ctx.isEmpty { self.handle(ctx) }
+                // 새로 활성화된 워치가 현재 권위 상태를 따라오도록 재방송.
+                self.broadcastWorkoutActive(self.isRideActive())
             }
         }
     }

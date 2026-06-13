@@ -30,6 +30,8 @@ final class WorkoutManager: NSObject, ObservableObject {
     /// 시작이 진행 중인지(begin​Collection 콜백 전까지 isRunning 이 아직 false 인 구간).
     /// 이 구간의 재진입을 막아 두 번째 세션이 생기는 것을 차단한다(Ended 전이 오류 방지).
     private var isStarting = false
+    /// 폰이 방송한 권위 워크아웃 레벨의 토큰(타임스탬프). 더 새 것만 채택한다.
+    private var workoutToken: Double = 0
     private var spo2Query: HKQuery?
     private var heartRateQuery: HKAnchoredObjectQuery?
     private var relayTimer: Timer?
@@ -75,11 +77,12 @@ final class WorkoutManager: NSObject, ObservableObject {
     }
 
     /// 컴플리케이션 시작/정지 버튼 → App Group 명령 처리.
+    /// 직접 세션을 켜지 않고 폰에 요청만 보낸다(폰 ride 가 단일 기준; 워치는 방송을 따라감).
     func consumePendingWorkoutCommandIfNeeded() {
         guard let cmd = RideMetricsStore.consumePendingCommand() else { return }
         switch cmd {
-        case "start": if !isRunning { startWorkout() }
-        case "stop": if isRunning { stopWorkout() }
+        case "start": requestWorkout(true)
+        case "stop": requestWorkout(false)
         default: break
         }
     }
@@ -473,14 +476,37 @@ extension WorkoutManager: WCSessionDelegate {
         handleCommand(applicationContext)
     }
 
+    /// 폰이 방송한 권위 워크아웃 레벨(workoutActive)에 세션을 정합한다.
+    /// 더 새 토큰만 채택하고, reconcile 은 idempotent 라 재생·중복에 안전하다.
     private func handleCommand(_ message: [String: Any]) {
-        guard let cmd = message["command"] as? String else { return }
+        guard let active = message["workoutActive"] as? Bool else { return }
+        let token = (message["wToken"] as? Double) ?? 0
         DispatchQueue.main.async {
-            switch cmd {
-            case "start": self.startWorkout()
-            case "stop": self.stopWorkout()
-            default: break
-            }
+            guard token > self.workoutToken else { return }   // 오래된/중복 방송 무시
+            self.workoutToken = token
+            self.reconcile(active: active)
+        }
+    }
+
+    /// 권위 레벨에 맞춰 세션을 켜거나 끈다(현재 상태와 같으면 아무것도 하지 않음).
+    private func reconcile(active: Bool) {
+        if active {
+            if !isRunning && !isStarting { startWorkout() }
+        } else {
+            if isRunning || isStarting { stopWorkout() }
+        }
+    }
+
+    /// 워치 버튼(CONNECT/DISCONNECT) → 폰에 시작/정지 '요청'만 보낸다.
+    /// 실제 시작/정지는 폰이 ride 를 켜고/끈 뒤 방송하는 권위 레벨로 이뤄진다.
+    func requestWorkout(_ start: Bool) {
+        let s = WCSession.default
+        guard s.activationState == .activated else { return }
+        let payload: [String: Any] = ["workoutRequest": start]
+        if s.isReachable {
+            s.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        } else {
+            s.transferUserInfo(payload)   // 폰이 백그라운드/미도달이면 다음 활성화 시 전달
         }
     }
 }

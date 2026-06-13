@@ -62,7 +62,8 @@ struct WatchContentView: View {
             HStack {
                 Spacer(minLength: 0)
                 Button {
-                    workout.isRunning ? workout.stopWorkout() : workout.startWorkout()
+                    // 폰에 시작/정지 요청만 보낸다(폰 ride 상태가 단일 기준; 세션은 폰 방송을 따라감).
+                    workout.requestWorkout(!workout.isRunning)
                 } label: {
                     Text(workout.isRunning ? "DISCONNECT" : "CONNECT")
                         .font(.system(size: 16, weight: .semibold))
