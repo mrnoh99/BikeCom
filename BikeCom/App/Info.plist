@@ -30,6 +30,8 @@
 	<string>백그라운드에서도 라이딩 경로를 기록합니다.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>라이딩 중 GPS 경로·거리·속도를 기록합니다.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>속도·케이던스(CSC) 센서를 폰에 직접 연결해 속도·케이던스를 받습니다.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.com.jaisungnoh.bikecom</key>
@@ -45,6 +47,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<string>bluetooth-central</string>
 	</array>
 	<!-- 라이딩 백업 파일을 Files 앱에서 열람·복사 가능하게(재설치 대비) -->
 	<key>UIFileSharingEnabled</key>

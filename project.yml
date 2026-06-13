@@ -83,8 +83,10 @@ targets:
         NSHealthUpdateUsageDescription: "라이딩을 Apple 건강 앱에 저장합니다."
         NSLocationAlwaysAndWhenInUseUsageDescription: "백그라운드에서도 라이딩 경로를 기록합니다."
         NSLocationWhenInUseUsageDescription: "라이딩 중 GPS 경로·거리·속도를 기록합니다."
+        NSBluetoothAlwaysUsageDescription: "속도·케이던스(CSC) 센서를 폰에 직접 연결해 속도·케이던스를 받습니다."
         UIBackgroundModes:
           - location
+          - bluetooth-central
         # 라이딩 백업 파일을 Files 앱에서 열람·복사 가능하게(재설치 대비).
         # Info.plist 가 xcodegen 으로 재생성돼도 유지되도록 여기에도 둔다.
         UIFileSharingEnabled: true

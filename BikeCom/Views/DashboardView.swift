@@ -130,8 +130,8 @@ struct DashboardView: View {
         // 등반)이 @Published 가 아니므로 session 재렌더에 의존하지 않는다 → Routes·More 는
         // 0.5초 tick 에 재렌더되지 않는다(재렌더는 주행 화면에만 한정).
         return TimelineView(.periodic(from: .now, by: 1)) { ctx in
-            let speedConnected = session.watch.speedSensorConnected
-            let cadConnected = session.watch.cadenceSensorConnected
+            let speedConnected = session.speedSensorConnected
+            let cadConnected = session.cadenceSensorConnected
             let hrConnected = session.watch.heartRateConnected
             VStack(spacing: 0) {
             metricRow {

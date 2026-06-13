@@ -33,17 +33,58 @@ struct DevicesView: View {
                 """)
             }
 
+            // 폰 직접 연결(BLE CSC 센서) — 워치 중계 없이 폰에 바로 페어링.
             Section {
                 HStack {
-                    Text("휠 둘레")
+                    Label("Bluetooth", systemImage: "antenna.radiowaves.left.and.right")
                     Spacer()
-                    Text("\(session.wheelCircumferenceMeters, specifier: "%.3f") m")
-                        .foregroundColor(.secondary)
+                    Text(session.ble.poweredOn ? "켜짐" : "꺼짐/권한 필요")
+                        .foregroundColor(session.ble.poweredOn ? Theme.green : .secondary)
+                }
+                if let name = session.ble.connectedName {
+                    sensorRow("연결된 센서", value: name, active: true)
+                    sensorRow("속도(BLE)", value: bleSpeedText, active: session.ble.speedConnected)
+                    sensorRow("케이던스(BLE)", value: bleCadenceText, active: session.ble.cadenceConnected)
+                    Button(role: .destructive) { session.ble.forget() } label: {
+                        Label("연결 해제·해제 저장", systemImage: "xmark.circle")
+                    }
+                } else {
+                    Button {
+                        session.ble.scanning ? session.ble.stopScan() : session.ble.startScan()
+                    } label: {
+                        Label(session.ble.scanning ? "스캔 중지" : "센서 스캔",
+                              systemImage: session.ble.scanning ? "stop.circle" : "magnifyingglass")
+                    }
+                    .disabled(!session.ble.poweredOn)
+                    ForEach(session.ble.discovered) { dev in
+                        Button { session.ble.connect(dev.id) } label: {
+                            HStack {
+                                Label(dev.name, systemImage: "dot.radiowaves.left.and.right")
+                                Spacer()
+                                Image(systemName: "link")
+                            }
+                        }
+                    }
                 }
             } header: {
-                Text("속도 센서 설정")
+                Text("폰 직접 연결 (BLE 속도·케이던스)")
             } footer: {
-                Text("휠 규격은 라이딩 설정에서 변경합니다. CSC 센서 페어링은 워치에서만 합니다.")
+                Text("표준 CSC(0x1816) 속도·케이던스 센서를 폰에 직접 연결합니다. 폰 BLE 가 연결되면 워치 중계보다 우선합니다. 휠 둘레로 속도를 계산하므로 아래 값을 정확히 설정하세요.")
+            }
+
+            Section {
+                Stepper(value: $session.wheelCircumferenceMeters, in: 1.000...2.500, step: 0.005) {
+                    HStack {
+                        Text("휠 둘레")
+                        Spacer()
+                        Text("\(session.wheelCircumferenceMeters, specifier: "%.3f") m")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } header: {
+                Text("속도 센서 설정 (BLE 속도 계산용)")
+            } footer: {
+                Text("예) 700×25C ≈ 2.105 m, 26\" MTB ≈ 2.070 m. 폰 직결 속도 센서의 속도 계산에 사용됩니다.")
             }
         }
         .listStyle(.insetGrouped)
@@ -64,6 +105,16 @@ struct DevicesView: View {
     private var hrText: String {
         guard session.watch.heartRateConnected, let bpm = session.watch.heartRateBPM else { return "수신 대기" }
         return "\(bpm) bpm"
+    }
+
+    private var bleSpeedText: String {
+        guard session.ble.speedConnected else { return "수신 대기" }
+        return String(format: "%.1f %@", session.unit.speed(fromMetersPerSecond: session.ble.speedMps), session.unit.speedLabel)
+    }
+
+    private var bleCadenceText: String {
+        guard session.ble.cadenceConnected else { return "수신 대기" }
+        return "\(session.ble.cadenceRPM) rpm"
     }
 
     private func sensorRow(_ label: String, value: String, active: Bool) -> some View {
