@@ -202,6 +202,7 @@ final class RideStore: ObservableObject {
     /// 병합 결과 등으로 전체 기록을 교체한다.
     func replaceAll(_ newRecords: [RideRecord]) {
         for r in newRecords { writeTrackFile(r) }
+        pruneTrackFiles(keeping: Set(newRecords.map { $0.id }))
         records = newRecords.map { $0.summary() }
         save()
     }
@@ -222,14 +223,20 @@ final class RideStore: ObservableObject {
 
     // MARK: 트랙 파일 (라이딩별 GPS 트랙을 분리 저장 — 메모리 절약)
 
+    /// 트랙 폴더는 iCloud 컨테이너(가능 시)에 두어 파일 단위로 **증분 동기화**된다.
+    /// 각 트랙 파일은 한 번만 쓰이므로 iCloud 가 변경분만 올린다(모놀리식 재업로드 없음).
     private var tracksDir: URL {
+        (cloudURL ?? localURL).deletingLastPathComponent().appendingPathComponent("Tracks", isDirectory: true)
+    }
+    private var localTracksDir: URL {
         localURL.deletingLastPathComponent().appendingPathComponent("Tracks", isDirectory: true)
     }
     private func trackFileURL(_ id: UUID) -> URL {
         tracksDir.appendingPathComponent("\(id.uuidString).json")
     }
 
-    /// 트랙이 비어 있지 않으면 라이딩별 파일로 저장(백그라운드). 비어 있으면 기존 파일을 보존.
+    /// 트랙이 비어 있지 않으면 라이딩별 파일로 저장(백그라운드, iCloud 안전 코디네이트 쓰기).
+    /// 비어 있으면 기존 파일을 보존.
     private func writeTrackFile(_ record: RideRecord) {
         guard !record.track.isEmpty else { return }
         let url = trackFileURL(record.id)
@@ -237,15 +244,39 @@ final class RideStore: ObservableObject {
         ioQueue.async {
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                      withIntermediateDirectories: true)
-            if let data = try? JSONEncoder().encode(track) {
-                try? data.write(to: url, options: .atomic)
+            guard let data = try? JSONEncoder().encode(track) else { return }
+            let coordinator = NSFileCoordinator(); var err: NSError?
+            coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
+                try? data.write(to: u, options: .atomic)
             }
         }
     }
 
     private func deleteTrackFile(_ id: UUID) {
         let url = trackFileURL(id)
-        ioQueue.async { try? FileManager.default.removeItem(at: url) }
+        ioQueue.async {
+            let coordinator = NSFileCoordinator(); var err: NSError?
+            coordinator.coordinate(writingItemAt: url, options: .forDeleting, error: &err) { u in
+                try? FileManager.default.removeItem(at: u)
+            }
+        }
+    }
+
+    /// replaceAll 등으로 사라진 기록의 트랙 파일을 정리한다(고아 파일·iCloud 용량 누수 방지).
+    private func pruneTrackFiles(keeping ids: Set<UUID>) {
+        let dir = tracksDir
+        ioQueue.async {
+            let fm = FileManager.default
+            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+            for f in files where f.pathExtension == "json" {
+                guard let id = UUID(uuidString: f.deletingPathExtension().lastPathComponent),
+                      !ids.contains(id) else { continue }
+                let c = NSFileCoordinator(); var e: NSError?
+                c.coordinate(writingItemAt: f, options: .forDeleting, error: &e) { u in
+                    try? fm.removeItem(at: u)
+                }
+            }
+        }
     }
 
     /// 라이딩의 GPS 트랙을 디스크에서 비동기로 로드(상세·내보내기용). 메인 큐로 반환.
@@ -267,9 +298,19 @@ final class RideStore: ObservableObject {
     }
 
     private static func readTrack(_ url: URL) -> [RideRecord.Coordinate] {
-        guard let data = try? Data(contentsOf: url),
-              let coords = try? JSONDecoder().decode([RideRecord.Coordinate].self, from: data) else { return [] }
-        return coords
+        // iCloud 파일이 아직 안 받아졌으면 다운로드를 요청하고 코디네이트 읽기로 받는다.
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        }
+        var result: [RideRecord.Coordinate] = []
+        let coordinator = NSFileCoordinator(); var err: NSError?
+        coordinator.coordinate(readingItemAt: url, options: [], error: &err) { u in
+            if let data = try? Data(contentsOf: u),
+               let coords = try? JSONDecoder().decode([RideRecord.Coordinate].self, from: data) {
+                result = coords
+            }
+        }
+        return result
     }
 
     // MARK: 누적 거리 집계 (records 변경 시 1회 갱신 + 영속화)
@@ -382,14 +423,14 @@ final class RideStore: ObservableObject {
                 coordinator.coordinate(writingItemAt: mainURL, options: .forReplacing, error: &err) { u in
                     try? data.write(to: u, options: .atomic)
                 }
-                // 백업 파일은 트랙 포함 전체본으로 쓴다(재설치·복원 시 Health·코스 트랙까지 보존).
-                // rides.json 은 메모리 절약을 위해 요약본 그대로 둔다.
-                let backupData = self.buildFullBackupData(from: snapshot) ?? data
-                try? backupData.write(to: localBak, options: .atomic)
+                // 자동 백업은 요약본(가벼움)으로 둔다. 트랙은 Tracks/ 가 iCloud 로 증분
+                // 동기화되어 재설치 시 함께 복원되므로, 저장마다 전체 트랙을 재인코딩하지 않는다.
+                // (사람이 꺼내는 트랙 포함 단일 파일은 makeBackupData 수동 내보내기로 제공)
+                try? data.write(to: localBak, options: .atomic)
                 if let cloudBak {
                     let c = NSFileCoordinator(); var e: NSError?
                     c.coordinate(writingItemAt: cloudBak, options: .forReplacing, error: &e) { u in
-                        try? backupData.write(to: u, options: .atomic)
+                        try? data.write(to: u, options: .atomic)
                     }
                 }
                 UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
@@ -494,13 +535,29 @@ final class RideStore: ObservableObject {
         }
     }
 
-    /// 로컬에만 기록이 있고 iCloud 엔 아직 없으면 1회 업로드.
+    /// 로컬에만 기록이 있고 iCloud 엔 아직 없으면 1회 업로드. 트랙 파일도 iCloud 로 이전.
     private func migrateLocalToCloudIfNeeded() {
         guard let cloudURL else { return }
         let fm = FileManager.default
         if !fm.fileExists(atPath: cloudURL.path), fm.fileExists(atPath: localURL.path),
            let data = try? Data(contentsOf: localURL) {
             try? data.write(to: cloudURL, options: .atomic)
+        }
+        // 로컬 Tracks/* → iCloud Tracks/ 이전(없는 것만). 파일 수가 많아 백그라운드에서.
+        let localTd = localTracksDir
+        let cloudTd = cloudURL.deletingLastPathComponent().appendingPathComponent("Tracks", isDirectory: true)
+        guard localTd.path != cloudTd.path else { return }
+        ioQueue.async {
+            guard let files = try? fm.contentsOfDirectory(at: localTd, includingPropertiesForKeys: nil) else { return }
+            try? fm.createDirectory(at: cloudTd, withIntermediateDirectories: true)
+            for f in files where f.pathExtension == "json" {
+                let dst = cloudTd.appendingPathComponent(f.lastPathComponent)
+                guard !fm.fileExists(atPath: dst.path) else { continue }
+                let c = NSFileCoordinator(); var e: NSError?
+                c.coordinate(writingItemAt: dst, options: .forReplacing, error: &e) { u in
+                    try? fm.copyItem(at: f, to: u)
+                }
+            }
         }
     }
 

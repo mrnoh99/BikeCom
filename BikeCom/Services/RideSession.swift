@@ -179,8 +179,10 @@ final class RideSession: ObservableObject {
             guard let self else { return }
             DispatchQueue.main.async {
                 var result = base
-                // 겹치지 않는 건강 기록 보충(건강 기록끼리의 중복도 한 번 더 정리).
-                for r in healthRides where !result.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) }) {
+                // 겹치지 않는 건강 기록 보충. 가져오기와 동일하게 시간 0·5km 이하는 제외.
+                for r in healthRides
+                where r.duration > 0 && r.distanceMeters > minKeepKm * 1000
+                    && !result.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) }) {
                     result.append(r)
                 }
                 let before = result.count
