@@ -143,9 +143,20 @@ final class RideStore: ObservableObject {
         let coordinator = NSFileCoordinator()
         var err: NSError?
         coordinator.coordinate(readingItemAt: url, options: [], error: &err) { u in
-            guard let data = try? Data(contentsOf: u),
-                  let decoded = try? JSONDecoder().decode([RideRecord].self, from: data) else { return }
-            DispatchQueue.main.async { self.records = decoded }
+            if let data = try? Data(contentsOf: u),
+               let decoded = try? JSONDecoder().decode([RideRecord].self, from: data),
+               !decoded.isEmpty {
+                DispatchQueue.main.async { self.records = decoded }
+                return
+            }
+            // 메인 파일이 없거나 비었으면(재설치 직후 등) 백업에서 자동 복원.
+            if let restored = self.loadBackupRecords() {
+                DispatchQueue.main.async {
+                    guard self.records.isEmpty else { return }
+                    self.records = restored
+                    self.save()   // 메인 rides.json 재생성
+                }
+            }
         }
     }
 
@@ -159,6 +170,74 @@ final class RideStore: ObservableObject {
         coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
             try? data.write(to: u, options: .atomic)
         }
+        writeBackup()   // 재설치·기기변경 대비 자동 백업
+    }
+
+    // MARK: 자동 백업 (재설치·기기변경 시 라이딩 데이터 보존)
+    // rides.json 과 별개로 메타데이터가 포함된 백업 파일을 로컬(Files 앱에서 열람 가능)과
+    // iCloud(재설치해도 자동 복원)에 함께 저장한다.
+
+    static let lastBackupKey = "bike.lastBackupAt"
+    let backupFileName = "BikeCom-Backup.json"
+    private var backupLocalURL: URL {
+        localURL.deletingLastPathComponent().appendingPathComponent(backupFileName)
+    }
+    private var backupCloudURL: URL? {
+        cloudURL?.deletingLastPathComponent().appendingPathComponent(backupFileName)
+    }
+
+    /// 백업 봉투: 버전·저장시각·건수 + 전체 기록(트랙 포함).
+    struct Backup: Codable {
+        var version: Int = 1
+        var savedAt: Date = Date()
+        var count: Int
+        var records: [RideRecord]
+    }
+
+    /// 현재 전체 기록을 백업 형식(JSON)으로 인코딩한다(내보내기·공유용).
+    func makeBackupData() -> Data? {
+        try? JSONEncoder().encode(Backup(count: records.count, records: records))
+    }
+
+    private func writeBackup() {
+        guard let data = makeBackupData() else { return }
+        try? data.write(to: backupLocalURL, options: .atomic)   // Files 앱에서 꺼낼 수 있음
+        if let cloud = backupCloudURL {
+            let c = NSFileCoordinator(); var e: NSError?
+            c.coordinate(writingItemAt: cloud, options: .forReplacing, error: &e) { u in
+                try? data.write(to: u, options: .atomic)
+            }
+        }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
+    }
+
+    /// 백업 파일에서 기록을 읽는다(iCloud 우선, 없으면 로컬).
+    private func loadBackupRecords() -> [RideRecord]? {
+        for url in [backupCloudURL, backupLocalURL].compactMap({ $0 }) {
+            if let data = try? Data(contentsOf: url),
+               let b = try? JSONDecoder().decode(Backup.self, from: data), !b.records.isEmpty {
+                return b.records
+            }
+        }
+        return nil
+    }
+
+    /// 사용자가 고른 백업 파일을 복원(병합)한다. 백업 봉투·rides.json 둘 다 허용. 복원 후 총 건수 반환.
+    @discardableResult
+    func restoreBackup(from url: URL) -> Int {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return 0 }
+        var incoming: [RideRecord] = []
+        if let b = try? JSONDecoder().decode(Backup.self, from: data) {
+            incoming = b.records
+        } else if let arr = try? JSONDecoder().decode([RideRecord].self, from: data) {
+            incoming = arr
+        }
+        guard !incoming.isEmpty else { return 0 }
+        let merged = RideRecordMerge.merge(existing: records, incoming: incoming, incomingWins: false)
+        replaceAll(merged)
+        return merged.count
     }
 
     // MARK: iCloud 동기화

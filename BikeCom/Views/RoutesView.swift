@@ -60,10 +60,12 @@ struct RoutesView: View {
     @State private var sort: RideSort = .newest
     @State private var grouped = false
     @State private var showImporter = false
+    @State private var showBackupImporter = false
     @State private var showConsolidateConfirm = false
     @State private var exportFile: ExportFile?
     @State private var exporting = false
     @AppStorage("route.bucketMeters") private var bucketMeters: Double = 250
+    @AppStorage(RideStore.lastBackupKey) private var lastBackupAt: Double = 0
 
     private var importTypes: [UTType] {
         [UTType(filenameExtension: "gpx") ?? .xml,
@@ -102,6 +104,16 @@ struct RoutesView: View {
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { session.importRideFiles(from: urls) }
         }
+        .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.json],
+                      allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                let total = session.store.restoreBackup(from: url)
+                session.importStatus = total > 0
+                    ? "백업 복원 완료 · 현재 \(total)건"
+                    : "복원 실패 (백업 파일 형식 확인)"
+                session.refreshDataStats()
+            }
+        }
         .confirmationDialog("기록 통합 정리", isPresented: $showConsolidateConfirm, titleVisibility: .visible) {
             Button("정리 실행 (5km 이하 삭제)", role: .destructive) { session.consolidateRoutes() }
             Button("취소", role: .cancel) {}
@@ -132,8 +144,43 @@ struct RoutesView: View {
                       systemImage: "square.and.arrow.up.on.square")
             }
             .disabled(exporting || session.store.records.isEmpty)
+            Divider()
+            Section("백업 (재설치 대비)") {
+                Button { backupNow() } label: {
+                    Label("백업 파일 내보내기", systemImage: "arrow.up.doc")
+                }
+                .disabled(session.store.records.isEmpty)
+                Button { session.importStatus = nil; showBackupImporter = true } label: {
+                    Label("백업에서 복원", systemImage: "arrow.down.doc")
+                }
+                if lastBackupAt > 0 {
+                    Label("마지막 자동 백업: \(backupTimeText)", systemImage: "checkmark.icloud")
+                }
+            }
         } label: {
             Image(systemName: "tray.and.arrow.down")
+        }
+    }
+
+    private var backupTimeText: String {
+        routeDateFormatter.string(from: Date(timeIntervalSince1970: lastBackupAt))
+    }
+
+    // 현재 전체 기록을 백업 JSON 파일로 만들어 공유 시트로 내보낸다(재설치 전 안전 보관용).
+    private func backupNow() {
+        guard let data = session.store.makeBackupData() else {
+            session.importStatus = "백업 생성 실패"; return
+        }
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyyMMdd-HHmm"
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BikeCom-Backup-\(stamp.string(from: Date())).json")
+        do {
+            try data.write(to: url, options: .atomic)
+            session.importStatus = "백업 파일 준비됨 · 공유 시트에서 저장/전송 (\(session.store.records.count)건)"
+            exportFile = ExportFile(url: url)
+        } catch {
+            session.importStatus = "백업 저장 실패"
         }
     }
 
