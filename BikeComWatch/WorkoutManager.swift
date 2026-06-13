@@ -27,6 +27,9 @@ final class WorkoutManager: NSObject, ObservableObject {
     private let healthStore = HKHealthStore()
     private var session: HKWorkoutSession?
     private var builder: HKLiveWorkoutBuilder?
+    /// 시작이 진행 중인지(begin​Collection 콜백 전까지 isRunning 이 아직 false 인 구간).
+    /// 이 구간의 재진입을 막아 두 번째 세션이 생기는 것을 차단한다(Ended 전이 오류 방지).
+    private var isStarting = false
     private var spo2Query: HKQuery?
     private var heartRateQuery: HKAnchoredObjectQuery?
     private var relayTimer: Timer?
@@ -132,7 +135,8 @@ final class WorkoutManager: NSObject, ObservableObject {
     }
 
     func startWorkout(configuration: HKWorkoutConfiguration? = nil) {
-        guard !isRunning, HKHealthStore.isHealthDataAvailable() else { return }
+        guard !isRunning, !isStarting, HKHealthStore.isHealthDataAvailable() else { return }
+        isStarting = true   // 콜백 전까지 재진입(중복 세션 생성) 차단
         let config: HKWorkoutConfiguration = configuration ?? {
             let c = HKWorkoutConfiguration()
             c.activityType = .cycling
@@ -163,7 +167,12 @@ final class WorkoutManager: NSObject, ObservableObject {
             s.startActivity(with: startDate)
             b.beginCollection(withStart: startDate) { [weak self] success, error in
                 guard let self else { return }
+                self.isStarting = false
                 if let error {
+                    // 시작 실패 시 세션을 정리해 다음 CONNECT 가 깨끗한 세션으로 시작되게 한다.
+                    s.end()
+                    self.session = nil
+                    self.builder = nil
                     self.send(["workoutError": error.localizedDescription])
                     return
                 }
@@ -177,6 +186,9 @@ final class WorkoutManager: NSObject, ObservableObject {
                 self.sendMetricsToPhone()
             }
         } catch {
+            isStarting = false
+            session = nil
+            builder = nil
             send(["workoutError": error.localizedDescription])
         }
     }
@@ -184,6 +196,7 @@ final class WorkoutManager: NSObject, ObservableObject {
     func stopWorkout() {
         stopRelayTimer()
         stopHeartRateQuery()
+        isStarting = false
         guard let activeSession = session else { return }
         let activeBuilder = builder
         session = nil
@@ -353,6 +366,7 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
                         from fromState: HKWorkoutSessionState, date: Date) {
         if toState == .ended {
             stopHeartRateQuery()
+            isStarting = false
             DispatchQueue.main.async {
                 self.isRunning = false
                 self.stopRelayTimer()
@@ -361,6 +375,11 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
     }
 
     func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
+        isStarting = false
+        // 실패한 세션은 종료·해제해 다음 시작이 새 세션으로 진행되게 한다.
+        session?.end()
+        session = nil
+        builder = nil
         DispatchQueue.main.async {
             self.isRunning = false
             self.stopRelayTimer()

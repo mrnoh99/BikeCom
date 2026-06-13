@@ -161,9 +161,13 @@ final class WatchSensorManager: NSObject, ObservableObject {
         let hr = isFresh(lastHeartRateAt, now: now)
         if hr != heartRateConnected { heartRateConnected = hr }
         if !hr, heartRateBPM != nil { heartRateBPM = nil }
-        if let lastAnyDataAt, now.timeIntervalSince(lastAnyDataAt) <= sensorFreshness {
+        let receiving = lastAnyDataAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
+        if receiving {
             let msg = watchReachable ? "워치 데이터 수신 중" : "워치 데이터 수신(백그라운드)"
             if msg != statusMessage { statusMessage = msg }
+        } else if lastError == nil, statusMessage.hasPrefix("워치 데이터 수신") {
+            // 워치가 DISCONNECT 되어 데이터가 끊기면 '수신 중' 표시를 해제한다(멈춤 방지).
+            statusMessage = "대기"
         }
     }
 
