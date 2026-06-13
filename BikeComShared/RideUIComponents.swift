@@ -7,8 +7,8 @@ enum WorkoutScreenStyle {
     static let metricFont = Font.system(size: 32, weight: .bold, design: .rounded)
     static let unitFont = Font.system(size: 11, weight: .semibold)
     static let labelFont = Font.system(size: 11, weight: .regular)
-    static let heartIconSize: CGFloat = 20
-    static let connectionLightSize: CGFloat = 20
+    static let heartIconSize: CGFloat = 22
+    static let connectionLightSize: CGFloat = 22   // 연결등을 하트와 같은 크기로
     static let sectionSpacing: CGFloat = 0
     static let leadingInset: CGFloat = 2
 }
@@ -50,6 +50,8 @@ struct WorkoutMetricRow: View {
     let labelTop: String
     let labelBottom: String?
     var connected: Bool? = nil
+    /// nil = 하트 없음, true = 맥동(연결됨), false = 정지 하트.
+    var heartPounding: Bool? = nil
 
     var body: some View {
         HStack(alignment: .center, spacing: 3) {
@@ -58,6 +60,14 @@ struct WorkoutMetricRow: View {
                 .foregroundColor(.white)
                 .minimumScaleFactor(0.75)
                 .lineLimit(1)
+
+            if let heartPounding {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: WorkoutScreenStyle.heartIconSize))
+                    .foregroundColor(.red)
+                    .symbolEffect(.pulse, options: .repeating, isActive: heartPounding)
+                    .padding(.leading, 1)
+            }
 
             Text(unit)
                 .font(WorkoutScreenStyle.unitFont)

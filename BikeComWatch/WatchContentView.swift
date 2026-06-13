@@ -35,10 +35,11 @@ struct WatchContentView: View {
                 Spacer(minLength: 0)
             }
 
-            // 2) 심박수 (현재)
+            // 2) 심박수 (현재) — 연결되면 맥동 하트
             WorkoutMetricRow(
                 value: workout.heartRate > 0 ? "\(workout.heartRate)" : "--",
-                unit: "BPM", labelTop: "심박수", labelBottom: nil
+                unit: "BPM", labelTop: "심박수", labelBottom: nil,
+                heartPounding: workout.isRunning && workout.heartRate > 0
             )
 
             // 3) 속도 (현재) + 연결등

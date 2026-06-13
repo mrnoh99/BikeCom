@@ -16,6 +16,21 @@ enum SpeedSource {
     case gps
 }
 
+/// More 탭 데이터 출처 통계.
+struct DataStats {
+    var healthCount = 0
+    var cyclemeterIncluded = 0      // 중복 아니어서 포함된 Cyclemeter 갯수(현재 목록)
+    var cyclemeterDuplicate = 0     // 건강·앱과 중복이라 제외된 갯수
+    var cyclemeterUnder5km = 0      // 5km 미만이라 제외된 갯수
+    var cyclemeterTotal = 0         // 원본 CSV 파싱 총 갯수
+
+    var healthMonthKm = 0.0, healthYearKm = 0.0, healthTotalKm = 0.0
+    var bothMonthKm = 0.0, bothYearKm = 0.0, bothTotalKm = 0.0
+
+    var firstHealthDate: Date?, firstHealthPlace = ""
+    var firstCycDate: Date?, firstCycPlace = ""
+}
+
 /// 대시보드의 모든 지표를 모으는 메인 뷰모델.
 /// 워치 센서 + GPS 를 결합해 거리·속도·심박·케이던스를 계산하고,
 /// 종료 시 RideStore 에 기록을 저장한다.
@@ -40,6 +55,9 @@ final class RideSession: ObservableObject {
     /// GPX 가져오기 진행/결과 표시.
     @Published var importStatus: String?
 
+    /// 데이터 출처 통계(More 탭). 백그라운드에서 계산해 발행.
+    @Published var dataStats: DataStats?
+
     /// 10분 미만 라이딩: 저장/삭제 결정 대기 중인 기록.
     @Published var pendingShortRide: RideRecord?
     /// 저장(건강·캘린더·파일) 완료 요약 — 확인 알림 표시용.
@@ -57,6 +75,7 @@ final class RideSession: ObservableObject {
             let merged = RideRecordMerge.merge(existing: self.store.records, incoming: records, incomingWins: true)
             self.store.replaceAll(merged)
             self.importStatus = "건강에서 가져오기 완료: \(added)개 추가, \(replaced)개 갱신 (워크아웃 \(records.count)개)"
+            self.refreshDataStats()
         }
     }
 
@@ -93,7 +112,56 @@ final class RideSession: ObservableObject {
                 self.store.replaceAll(result)
                 self.health.refreshTotals()
                 self.importStatus = "정리 완료: \(result.count)개 기록 · 5km 이하 \(removed)개 삭제 (건강 \(healthRides.count) · CSV \(csv.count) 후보)"
+                self.refreshDataStats()
             }
+        }
+    }
+
+    /// More 탭 데이터 출처 통계를 백그라운드에서 계산해 발행한다.
+    func refreshDataStats() {
+        let records = store.records
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var st = DataStats()
+            let cal = Calendar.current
+            let now = Date()
+            func inMonth(_ d: Date) -> Bool { cal.isDate(d, equalTo: now, toGranularity: .month) }
+            func inYear(_ d: Date) -> Bool { cal.isDate(d, equalTo: now, toGranularity: .year) }
+            func km(_ rs: [RideRecord], _ pred: (Date) -> Bool) -> Double {
+                rs.filter { pred($0.startedAt) }.reduce(0) { $0 + $1.distanceMeters } / 1000
+            }
+
+            let health = records.filter { $0.source == .health }
+            let cyc = records.filter { $0.source == .cyclemeter }
+            st.healthCount = health.count
+            st.cyclemeterIncluded = cyc.count
+
+            st.healthMonthKm = km(health, inMonth); st.healthYearKm = km(health, inYear); st.healthTotalKm = km(health) { _ in true }
+            let both = health + cyc
+            st.bothMonthKm = km(both, inMonth); st.bothYearKm = km(both, inYear); st.bothTotalKm = km(both) { _ in true }
+
+            if let fh = health.min(by: { $0.startedAt < $1.startedAt }) {
+                st.firstHealthDate = fh.startedAt; st.firstHealthPlace = fh.location ?? fh.name
+            }
+            if let fc = cyc.min(by: { $0.startedAt < $1.startedAt }) {
+                st.firstCycDate = fc.startedAt; st.firstCycPlace = fc.location ?? fc.name
+            }
+
+            // Cyclemeter 원본(번들 CSV)을 파싱해 중복/5km 미만 제외 갯수 산출.
+            if let url = Bundle.main.url(forResource: "CyclemeterBaseline", withExtension: "csv"),
+               let data = try? Data(contentsOf: url) {
+                let parsed = CSVImporter.parse(data: data, fallbackName: "Cyclemeter")
+                st.cyclemeterTotal = parsed.count
+                let nonCyc = records.filter { $0.source != .cyclemeter }
+                var dup = 0, small = 0
+                for c in parsed {
+                    if c.distanceMeters <= 5000 { small += 1; continue }
+                    if nonCyc.contains(where: { RideRecordMerge.isDuplicate(c, of: $0) }) { dup += 1 }
+                }
+                st.cyclemeterDuplicate = dup
+                st.cyclemeterUnder5km = small
+            }
+
+            DispatchQueue.main.async { self?.dataStats = st }
         }
     }
 
@@ -272,6 +340,7 @@ final class RideSession: ObservableObject {
                     incomingWins: false)
                 self.store.replaceAll(merged)
                 UserDefaults.standard.set(true, forKey: Self.baselineImportedKey)
+                self.refreshDataStats()
             }
         }
     }

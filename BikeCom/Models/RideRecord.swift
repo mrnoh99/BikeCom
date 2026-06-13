@@ -16,6 +16,7 @@ struct RideRecord: Identifiable, Codable {
     var name: String
     var bikeName: String?              // 자전거 종류(편집 가능, 가져온 기록은 없을 수 있음)
     var source: RideSource?            // 데이터 출처(통합 정리 우선순위용; 레거시는 nil)
+    var location: String?              // 장소(Cyclemeter Location 열 등)
     var startedAt: Date
     var duration: TimeInterval        // 실제 라이딩 시간(정지 제외)
     var totalElapsed: TimeInterval     // 시작~종료 총 경과
@@ -39,6 +40,7 @@ struct RideRecord: Identifiable, Codable {
     }
 
     init(id: UUID = UUID(), name: String, bikeName: String? = nil, source: RideSource? = nil,
+         location: String? = nil,
          startedAt: Date, duration: TimeInterval,
          totalElapsed: TimeInterval, distanceMeters: Double, averageSpeedMps: Double,
          maxSpeedMps: Double, maxHeartRate: Int?, avgHeartRate: Int?, maxCadence: Int?,
@@ -47,6 +49,7 @@ struct RideRecord: Identifiable, Codable {
         self.name = name
         self.bikeName = bikeName
         self.source = source
+        self.location = location
         self.startedAt = startedAt
         self.duration = duration
         self.totalElapsed = totalElapsed

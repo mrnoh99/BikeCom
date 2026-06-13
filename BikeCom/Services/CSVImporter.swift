@@ -32,11 +32,19 @@ enum CSVImporter {
 
     // MARK: - Summary (한 행 = 라이딩)
 
+    /// Cyclemeter 요약 가져오기 시 이 시점 이전 기록은 제외한다(2013-01-01).
+    static let cyclemeterCutoff: Date = {
+        var c = DateComponents(); c.year = 2013; c.month = 1; c.day = 1
+        return Calendar(identifier: .gregorian).date(from: c) ?? .distantPast
+    }()
+
     private static func parseSummaryRow(_ row: [String], map: ColumnMap, headers: [String],
                                         fallbackName: String) -> RideRecord? {
         guard let started = parseDate(map.value(.date, in: row) ?? map.value(.start, in: row)) else {
             return nil
         }
+        // 2013년 이전 Cyclemeter 기록은 가져오지 않는다.
+        guard started >= cyclemeterCutoff else { return nil }
 
         let route = map.value(.title, in: row)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let activity = map.value(.activity, in: row)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -76,6 +84,7 @@ enum CSVImporter {
             let b = map.value(.bike, in: row)?.trimmingCharacters(in: .whitespacesAndNewlines)
             return (b?.isEmpty == false && b?.lowercased() != "none") ? b : nil
         }()
+        let place = map.value(.location, in: row)?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard isPlausibleRide(distanceMeters: distanceMeters, duration: duration) else { return nil }
 
@@ -83,6 +92,7 @@ enum CSVImporter {
             name: name,
             bikeName: bike,
             source: .cyclemeter,
+            location: (place?.isEmpty == false) ? place : nil,
             startedAt: started,
             duration: duration > 0 ? duration : elapsed,
             totalElapsed: elapsed > 0 ? elapsed : duration,
@@ -180,7 +190,7 @@ enum CSVImporter {
 
     private enum Col: CaseIterable {
         case date, start, title, name, activity, distance, time, duration, durationSecs, movingTime, elapsed, stoppedSecs
-        case avgSpeed, maxSpeed, avgHR, maxHR, avgCadence, maxCadence, bike
+        case avgSpeed, maxSpeed, avgHR, maxHR, avgCadence, maxCadence, bike, location
         case lat, lon, elevation, speed, hr, cadence
     }
 
@@ -231,6 +241,7 @@ enum CSVImporter {
             .avgCadence: ["avgcadence", "averagecadence", "averagecadencerpm"],
             .maxCadence: ["maxcadence", "maxbikecadence", "maximumcadence", "maximumcadencerpm"],
             .bike: ["bike", "bicycle", "gear"],
+            .location: ["location", "place", "city"],
             .lat: ["lat", "latitude", "latdeg"],
             .lon: ["lon", "long", "longitude", "lng", "londeg"],
             .elevation: ["ele", "elevation", "alt", "altitude"],
