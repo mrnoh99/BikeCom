@@ -126,16 +126,17 @@ struct DashboardView: View {
     // 메트릭 그리드 — 8행이 남은 높이를 균등 분배(스크롤 없음).
     private func grid(_ layout: DeviceLayout.Dashboard) -> some View {
         let dash = MetricDash.symbol
-        let speedConnected = session.watch.speedSensorConnected
-        let cadConnected = session.watch.cadenceSensorConnected
-        let hrConnected = session.watch.heartRateConnected
-
-        return VStack(spacing: 0) {
+        // 그리드 전체를 TimelineView 로 감싸 1초마다 스스로 갱신한다. 라이브 값(거리·시간·
+        // 등반)이 @Published 가 아니므로 session 재렌더에 의존하지 않는다 → Routes·More 는
+        // 0.5초 tick 에 재렌더되지 않는다(재렌더는 주행 화면에만 한정).
+        return TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            let speedConnected = session.watch.speedSensorConnected
+            let cadConnected = session.watch.cadenceSensorConnected
+            let hrConnected = session.watch.heartRateConnected
+            VStack(spacing: 0) {
             metricRow {
-                TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                    MetricCell(label: "Clock", value: clockFormatter.string(from: ctx.date).prefix5,
-                               rowIndex: 0)
-                }
+                MetricCell(label: "Clock", value: clockFormatter.string(from: ctx.date).prefix5,
+                           rowIndex: 0)
                 MetricCell(label: "Distance", value: fmt(session.displayDistance, 2),
                            rowIndex: 0, unit: session.unit.distanceLabel)
             }
@@ -194,9 +195,10 @@ struct DashboardView: View {
             }
             divider
             distanceStatsRow(layout)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, layout.gridHPadding)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, layout.gridHPadding)
     }
 
     // Month·Year·Total — km 단위는 값 아래 작은 글씨.

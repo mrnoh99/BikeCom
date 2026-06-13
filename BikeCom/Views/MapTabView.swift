@@ -26,14 +26,16 @@ struct MapTabView: View {
                 .ignoresSafeArea(edges: .top)
 
             VStack(spacing: 8) {
-                // 상단 요약 바
-                HStack(spacing: 20) {
-                    summary("거리", "\(String(format: "%.2f", session.displayDistance)) \(session.unit.distanceLabel)")
-                    summary("속도", "\(String(format: "%.1f", session.displaySpeed)) \(session.unit.speedLabel)")
-                    summary("시간", formatDuration(session.rideSeconds))
+                // 상단 요약 바 — 라이브 값이 @Published 가 아니므로 TimelineView 로 1초마다 갱신.
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    HStack(spacing: 20) {
+                        summary("거리", "\(String(format: "%.2f", session.displayDistance)) \(session.unit.distanceLabel)")
+                        summary("속도", "\(String(format: "%.1f", session.displaySpeed)) \(session.unit.speedLabel)")
+                        summary("시간", formatDuration(session.rideSeconds))
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
                 }
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
 
                 // 기준 코스 오버레이 배너(이름 + 해제)
                 if let name = session.followCourseName {

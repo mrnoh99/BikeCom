@@ -52,7 +52,8 @@ final class RideSession: ObservableObject {
     @Published var unit: DistanceUnit = .kilometers
 
     /// 등반 고도(누적 상승 고도, m) — GPS 고도의 양(+) 변화량 합.
-    @Published private(set) var elevationGainMeters: Double = 0
+    /// 등반 고도(누적 상승) — 라이브 갱신값이라 @Published 가 아니다(틱 재렌더 방지).
+    private(set) var elevationGainMeters: Double = 0
 
     /// GPX 가져오기 진행/결과 표시.
     @Published var importStatus: String?
@@ -426,15 +427,18 @@ final class RideSession: ObservableObject {
     @Published private(set) var state: RideState = .idle {
         didSet { updateScreenAwake() }
     }
-    @Published private(set) var clock: Date = Date()
+    /// 라이브 주행 지표 — 0.5초 tick 으로 갱신되지만 @Published 가 아니어서 session 의
+    /// objectWillChange 를 발행하지 않는다(Routes·More 등이 매 틱 재렌더되는 것 방지).
+    /// 표시는 주행 화면(Dashboard·Map)이 TimelineView 로 주기 갱신해 읽는다.
+    private(set) var clock: Date = Date()
 
     // 누적/계산 지표 (표시는 항상 단위 변환 후)
-    @Published private(set) var distanceMeters: Double = 0
+    private(set) var distanceMeters: Double = 0
     @Published private(set) var currentSpeedMps: Double = 0
-    @Published private(set) var rideSeconds: TimeInterval = 0    // 라이딩 시간(정지 제외)
-    @Published private(set) var totalSeconds: TimeInterval = 0   // 총 경과(시작~지금)
+    private(set) var rideSeconds: TimeInterval = 0    // 라이딩 시간(정지 제외)
+    private(set) var totalSeconds: TimeInterval = 0   // 총 경과(시작~지금)
     @Published private(set) var maxSpeedMps: Double = 0
-    @Published private(set) var movingSeconds: TimeInterval = 0  // 실제 움직인 시간(평균속도용)
+    private(set) var movingSeconds: TimeInterval = 0  // 실제 움직인 시간(평균속도용)
 
     // 심박/케이던스
     @Published private(set) var heartRate: Int?
