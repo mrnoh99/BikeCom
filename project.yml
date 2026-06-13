@@ -68,7 +68,9 @@ targets:
       - path: BikeCom
         excludes:
           - Resources/**
-      - path: BikeCom/Resources/CyclemeterBaseline.csv
+      # 앱 기본 시드(트랙 포함 Cyclemeter 정제 데이터)만 번들에 포함.
+      # 문서용 CSV(CyclemeterRaw·SeedRidesClean)는 번들에서 제외(저장소 열람용).
+      - path: BikeCom/Resources/SeedRides.json.gz
         buildPhase: resources
     info:
       path: BikeCom/App/Info.plist
