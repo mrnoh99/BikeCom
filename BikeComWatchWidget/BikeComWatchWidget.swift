@@ -97,14 +97,14 @@ struct BikeComComplicationView: View {
     private var startButton: some View {
         if snap.isRunning {
             Button(intent: StopRideIntent()) {
-                Text("정지")
+                Text("DISCONNECT")
                     .font(.system(size: 11, weight: .bold))
                     .frame(maxWidth: .infinity)
             }
             .tint(.red)
         } else {
             Button(intent: StartRideIntent()) {
-                Text("시작")
+                Text("CONNECT")
                     .font(.system(size: 11, weight: .bold))
                     .frame(maxWidth: .infinity)
             }
@@ -152,7 +152,7 @@ struct BikeComComplication: Widget {
                 .containerBackground(.clear, for: .widget)
         }
         .configurationDisplayName("BikeCom")
-        .description("거리·심박·평균속도·케이던스와 시작 버튼.")
+        .description("거리·심박·평균속도·케이던스와 CONNECT/DISCONNECT 버튼.")
         .supportedFamilies([.accessoryCircular, .accessoryInline,
                             .accessoryCorner, .accessoryRectangular])
     }

@@ -63,7 +63,7 @@ struct WatchContentView: View {
                 Button {
                     workout.isRunning ? workout.stopWorkout() : workout.startWorkout()
                 } label: {
-                    Text(workout.isRunning ? "정지" : "시작")
+                    Text(workout.isRunning ? "DISCONNECT" : "CONNECT")
                         .font(.system(size: 16, weight: .semibold))
                         .frame(minWidth: 88)
                 }

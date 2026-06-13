@@ -1,9 +1,9 @@
 import AppIntents
 import Foundation
 
-/// 컴플리케이션에서 주행 시작 — App Group 명령 후 워치 앱을 연다.
+/// 컴플리케이션 CONNECT — 워치 데이터(심박·속도·케이던스)를 폰으로 보내기 시작.
 struct StartRideIntent: AppIntent {
-    static var title: LocalizedStringResource = "시작"
+    static var title: LocalizedStringResource = "CONNECT"
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
@@ -12,9 +12,9 @@ struct StartRideIntent: AppIntent {
     }
 }
 
-/// 컴플리케이션에서 주행 정지.
+/// 컴플리케이션 DISCONNECT — 워치 데이터 송신 중지.
 struct StopRideIntent: AppIntent {
-    static var title: LocalizedStringResource = "정지"
+    static var title: LocalizedStringResource = "DISCONNECT"
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
