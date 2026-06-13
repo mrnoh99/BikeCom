@@ -106,7 +106,7 @@ struct RoutesView: View {
             Button("정리 실행 (5km 이하 삭제)", role: .destructive) { session.consolidateRoutes() }
             Button("취소", role: .cancel) {}
         } message: {
-            Text("앱 직접 기록 → Apple 건강 → Cyclemeter 순으로 중복 없이 채우고, 주행거리 5km 이하 라이딩을 일괄 삭제합니다.")
+            Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple 건강 기록을 보충합니다. 주행거리 5km 이하는 일괄 삭제합니다.")
         }
         .sheet(item: $exportFile) { f in
             ActivityView(items: [f.url])
