@@ -16,16 +16,15 @@ enum SpeedSource {
     case gps
 }
 
-/// More 탭 데이터 출처 통계.
+/// More 탭 데이터 출처 통계 (Cyclemeter 시드 = 기본, Health = 비중복 보충).
 struct DataStats {
-    var healthCount = 0
-    var cyclemeterIncluded = 0      // 중복 아니어서 포함된 Cyclemeter 갯수(현재 목록)
-    var cyclemeterDuplicate = 0     // 건강·앱과 중복이라 제외된 갯수
-    var cyclemeterUnder5km = 0      // 5km 미만이라 제외된 갯수
-    var cyclemeterTotal = 0         // 원본 CSV 파싱 총 갯수
+    var cyclemeterBase = 0        // 기본 Cyclemeter 시드(트랙 포함) 기록 수
+    var healthSupplemented = 0    // 겹치지 않아 보충된 건강 기록 수
+    var healthOverlap = 0         // 기본과 겹쳐 제외된 건강 워크아웃 수
+    var healthTotal = 0           // Apple 건강의 사이클링 워크아웃 총 수
 
-    var healthMonthKm = 0.0, healthYearKm = 0.0, healthTotalKm = 0.0
-    var bothMonthKm = 0.0, bothYearKm = 0.0, bothTotalKm = 0.0
+    var healthMonthKm = 0.0, healthYearKm = 0.0, healthTotalKm = 0.0   // 건강(보충분)만
+    var bothMonthKm = 0.0, bothYearKm = 0.0, bothTotalKm = 0.0         // Cyclemeter+건강
 
     var firstHealthDate: Date?, firstHealthPlace = ""
     var firstCycDate: Date?, firstCycPlace = ""
@@ -63,55 +62,45 @@ final class RideSession: ObservableObject {
     /// 저장(건강·캘린더·파일) 완료 요약 — 확인 알림 표시용.
     @Published var saveSummary: String?
 
-    /// Apple 건강의 사이클링 워크아웃(경로·심박 포함)을 Routes 로 가져온다.
-    /// 같은 시작 시각의 기록은 Health 데이터로 교체한다.
+    /// Apple 건강의 사이클링 워크아웃을 **겹치지 않는 것만 보충**한다(시드 트랙 데이터가 기본).
     func importFromHealth() {
         importStatus = "건강에서 가져오는 중…"
         healthImporter.importCyclingWorkouts { [weak self] records in
             guard let self else { return }
-            let existingKeys = Set(self.store.records.map { RideRecordMerge.startKey(for: $0.startedAt) })
-            let replaced = records.filter { existingKeys.contains(RideRecordMerge.startKey(for: $0.startedAt)) }.count
-            let added = records.count - replaced
-            let merged = RideRecordMerge.merge(existing: self.store.records, incoming: records, incomingWins: true)
-            self.store.replaceAll(merged)
-            self.importStatus = "건강에서 가져오기 완료: \(added)개 추가, \(replaced)개 갱신 (워크아웃 \(records.count)개)"
+            // 기존 기록(시드 Cyclemeter 등)과 겹치지 않는 건강 기록만 추가.
+            let added = records.filter { r in
+                !self.store.records.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) })
+            }
+            self.store.addMany(added)
+            self.importStatus = "건강 보충 완료: 겹치지 않는 \(added.count)개 추가 (워크아웃 \(records.count)개)"
             self.refreshDataStats()
         }
     }
 
-    /// Routes 통합 정리 — 우선순위로 개별 코스를 채운 뒤 5km 이하 일괄 삭제.
-    /// 1) 앱에서 직접 Done(최우선) → 2) 중복 없는 Apple 건강 → 3) 중복 없는 Cyclemeter CSV.
+    /// Routes 통합 정리 — Cyclemeter 시드(트랙 포함)+앱·GPX 를 기본으로 두고
+    /// 겹치지 않는 Apple 건강 기록으로 보충, 5km 이하 일괄 삭제.
     func consolidateRoutes(minKeepKm: Double = 5) {
         importStatus = "기록 통합 정리 중…"
-        // 1순위: 앱 직접 기록(레거시 nil 포함) + 사용자 GPX 가져오기 → 그대로 유지.
-        let priority1 = store.records.filter {
+        // 기본: 앱 직접 기록 + GPX + Cyclemeter 시드(트랙 포함). (레거시 nil = 앱으로 간주)
+        let base = store.records.filter {
             let s = $0.source ?? .app
-            return s == .app || s == .gpx
+            return s == .app || s == .gpx || s == .cyclemeter
         }
         healthImporter.importCyclingWorkouts { [weak self] healthRides in
             guard let self else { return }
-            // 3순위: 번들 Cyclemeter 요약 CSV.
-            var csv: [RideRecord] = []
-            if let url = Bundle.main.url(forResource: "CyclemeterBaseline", withExtension: "csv"),
-               let data = try? Data(contentsOf: url) {
-                csv = CSVImporter.parse(data: data, fallbackName: "Cyclemeter")
-            }
             DispatchQueue.main.async {
-                var result = priority1
-                func addNonDuplicate(_ list: [RideRecord]) {
-                    for r in list where !result.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) }) {
-                        result.append(r)
-                    }
+                var result = base
+                // 겹치지 않는 건강 기록 보충.
+                for r in healthRides where !result.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) }) {
+                    result.append(r)
                 }
-                addNonDuplicate(healthRides)   // 2순위
-                addNonDuplicate(csv)           // 3순위
                 let before = result.count
                 result = result.filter { $0.distanceMeters > minKeepKm * 1000 }
                 let removed = before - result.count
                 result.sort { $0.startedAt > $1.startedAt }
                 self.store.replaceAll(result)
                 self.health.refreshTotals()
-                self.importStatus = "정리 완료: \(result.count)개 기록 · 5km 이하 \(removed)개 삭제 (건강 \(healthRides.count) · CSV \(csv.count) 후보)"
+                self.importStatus = "정리 완료: \(result.count)개 기록 · 5km 이하 \(removed)개 삭제 (건강 후보 \(healthRides.count))"
                 self.refreshDataStats()
             }
         }
@@ -120,6 +109,7 @@ final class RideSession: ObservableObject {
     /// More 탭 데이터 출처 통계를 백그라운드에서 계산해 발행한다.
     func refreshDataStats() {
         let records = store.records
+        let healthTotal = health.rideWorkouts.count   // Apple 건강 사이클링 워크아웃 총 수
         DispatchQueue.global(qos: .utility).async { [weak self] in
             var st = DataStats()
             let cal = Calendar.current
@@ -132,8 +122,10 @@ final class RideSession: ObservableObject {
 
             let health = records.filter { $0.source == .health }
             let cyc = records.filter { $0.source == .cyclemeter }
-            st.healthCount = health.count
-            st.cyclemeterIncluded = cyc.count
+            st.cyclemeterBase = cyc.count
+            st.healthSupplemented = health.count
+            st.healthTotal = healthTotal
+            st.healthOverlap = max(0, healthTotal - health.count)
 
             st.healthMonthKm = km(health, inMonth); st.healthYearKm = km(health, inYear); st.healthTotalKm = km(health) { _ in true }
             let both = health + cyc
@@ -144,21 +136,6 @@ final class RideSession: ObservableObject {
             }
             if let fc = cyc.min(by: { $0.startedAt < $1.startedAt }) {
                 st.firstCycDate = fc.startedAt; st.firstCycPlace = fc.location ?? fc.name
-            }
-
-            // Cyclemeter 원본(번들 CSV)을 파싱해 중복/5km 미만 제외 갯수 산출.
-            if let url = Bundle.main.url(forResource: "CyclemeterBaseline", withExtension: "csv"),
-               let data = try? Data(contentsOf: url) {
-                let parsed = CSVImporter.parse(data: data, fallbackName: "Cyclemeter")
-                st.cyclemeterTotal = parsed.count
-                let nonCyc = records.filter { $0.source != .cyclemeter }
-                var dup = 0, small = 0
-                for c in parsed {
-                    if c.distanceMeters <= 5000 { small += 1; continue }
-                    if nonCyc.contains(where: { RideRecordMerge.isDuplicate(c, of: $0) }) { dup += 1 }
-                }
-                st.cyclemeterDuplicate = dup
-                st.cyclemeterUnder5km = small
             }
 
             DispatchQueue.main.async { self?.dataStats = st }
@@ -323,23 +300,22 @@ final class RideSession: ObservableObject {
         importBaselineHistoryIfNeeded()
     }
 
-    private static let baselineImportedKey = "bike.cyclemeterBaselineV2"
+    private static let baselineImportedKey = "bike.cyclemeterSeedV3"
 
-    /// 앱 번들 Cyclemeter CSV 를 1회 주입한다(V2: DB 추출 정제본).
-    /// 기존 Cyclemeter 기록은 제거 후 정제본으로 교체하고, 앱·건강·GPX 기록은 유지한다.
+    /// 앱 번들 Cyclemeter 시드(트랙 포함 JSON)를 1회 기본 기록으로 주입한다.
+    /// 기존 Cyclemeter 기록은 제거 후 시드로 교체하고, 앱·건강·GPX 기록은 유지한다.
     private func importBaselineHistoryIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: Self.baselineImportedKey) else { return }
-        guard let url = Bundle.main.url(forResource: "CyclemeterBaseline", withExtension: "csv") else { return }
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self, let data = try? Data(contentsOf: url) else { return }
-            let baseline = CSVImporter.parse(data: data, fallbackName: "Cyclemeter")
-            guard !baseline.isEmpty else { return }
+            guard let self else { return }
+            let seed = SeedRides.load()
+            guard !seed.isEmpty else { return }
             DispatchQueue.main.async {
-                // 기존 Cyclemeter 기록(구버전·손상 포함) 제거 후 정제본 주입. 나머지 출처는 유지.
+                // 기존 Cyclemeter 기록 제거 후 시드(트랙 포함) 주입. 앱·건강·GPX 기록은 유지.
                 let kept = self.store.records.filter { $0.source != .cyclemeter }
                 let merged = RideRecordMerge.merge(
                     existing: kept,
-                    incoming: baseline,
+                    incoming: seed,
                     incomingWins: false)
                 self.store.replaceAll(merged)
                 UserDefaults.standard.set(true, forKey: Self.baselineImportedKey)

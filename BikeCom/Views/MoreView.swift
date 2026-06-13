@@ -83,14 +83,14 @@ struct MoreView: View {
     @ViewBuilder private var dataSourceSection: some View {
         if let s = session.dataStats {
             Section {
-                kv("건강 기록", "\(s.healthCount)개", Theme.red)
-                kv("Cyclemeter 포함(중복 아님)", "\(s.cyclemeterIncluded)개", Theme.green)
-                kv("Cyclemeter 중복 제외", "\(s.cyclemeterDuplicate)개")
-                kv("Cyclemeter 5km 미만 제외", "\(s.cyclemeterUnder5km)개")
+                kv("Cyclemeter 기본(트랙 포함)", "\(s.cyclemeterBase)개", Theme.green)
+                kv("건강 보충(겹치지 않음)", "\(s.healthSupplemented)개", Theme.red)
+                kv("건강 겹침(제외)", "\(s.healthOverlap)개")
+                kv("건강 전체(Apple Health)", "\(s.healthTotal)개")
             } header: {
                 Text("데이터 출처 — 기록 수")
             } footer: {
-                Text("원본 Cyclemeter \(s.cyclemeterTotal)건 중 건강·앱과 중복인 \(s.cyclemeterDuplicate)건, 5km 미만 \(s.cyclemeterUnder5km)건을 제외하고 \(s.cyclemeterIncluded)건을 목록에 포함했습니다.")
+                Text("Cyclemeter 시드(트랙 포함) \(s.cyclemeterBase)건을 기본으로, Apple 건강 \(s.healthTotal)건 중 겹치지 않는 \(s.healthSupplemented)건을 보충했습니다(겹침 \(s.healthOverlap)건 제외).")
             }
             Section {
                 distRow("이번 달", s.healthMonthKm, s.bothMonthKm)
