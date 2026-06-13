@@ -148,8 +148,13 @@ final class RideSession: ObservableObject {
             self?.importStatus = "건강에서 가져오는 중… \(done)/\(total)"
         }, completion: { [weak self] records in
             guard let self else { return }
-            self.store.addMany(records)
-            self.importStatus = "건강 보충 완료: 겹치지 않는 \(records.count)개 추가"
+            // 주행시간 0 이거나 거리 5km 이하인 건강 기록은 제외한다.
+            let kept = records.filter { $0.duration > 0 && $0.distanceMeters > 5000 }
+            self.store.addMany(kept)
+            let dropped = records.count - kept.count
+            self.importStatus = dropped > 0
+                ? "건강 보충 완료: \(kept.count)개 추가 (시간 0·5km 이하 \(dropped)개 제외)"
+                : "건강 보충 완료: 겹치지 않는 \(kept.count)개 추가"
             self.refreshDataStats()
         })
     }

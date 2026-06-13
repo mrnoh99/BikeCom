@@ -382,11 +382,14 @@ final class RideStore: ObservableObject {
                 coordinator.coordinate(writingItemAt: mainURL, options: .forReplacing, error: &err) { u in
                     try? data.write(to: u, options: .atomic)
                 }
-                try? data.write(to: localBak, options: .atomic)
+                // 백업 파일은 트랙 포함 전체본으로 쓴다(재설치·복원 시 Health·코스 트랙까지 보존).
+                // rides.json 은 메모리 절약을 위해 요약본 그대로 둔다.
+                let backupData = self.buildFullBackupData(from: snapshot) ?? data
+                try? backupData.write(to: localBak, options: .atomic)
                 if let cloudBak {
                     let c = NSFileCoordinator(); var e: NSError?
                     c.coordinate(writingItemAt: cloudBak, options: .forReplacing, error: &e) { u in
-                        try? data.write(to: u, options: .atomic)
+                        try? backupData.write(to: u, options: .atomic)
                     }
                 }
                 UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
@@ -417,9 +420,27 @@ final class RideStore: ObservableObject {
         var records: [RideRecord]
     }
 
-    /// 현재 전체 기록을 백업 형식(JSON)으로 인코딩한다(수동 내보내기·공유용).
-    func makeBackupData() -> Data? {
-        try? JSONEncoder().encode(Backup(count: records.count, records: records))
+    /// 요약본(메모리)에 디스크의 트랙을 다시 채워 **트랙 포함 전체본**을 만든다.
+    /// 백업이 Health GPS·지도 코스(GPX) 트랙까지 보존하도록 한다. 백그라운드에서 호출.
+    private func buildFullBackupData(from summaries: [RideRecord]) -> Data? {
+        let full = summaries.map { rec -> RideRecord in
+            var r = rec
+            if r.track.isEmpty, r.trackCount > 0 {
+                r.track = Self.readTrack(self.trackFileURL(r.id))
+            }
+            return r
+        }
+        return try? JSONEncoder().encode(Backup(count: full.count, records: full))
+    }
+
+    /// 현재 전체 기록(트랙 포함)을 백업 형식(JSON)으로 인코딩한다(수동 내보내기·공유용).
+    /// 트랙 파일을 디스크에서 읽으므로 백그라운드(ioQueue)에서 수행하고 결과만 메인으로 반환.
+    func makeBackupData(completion: @escaping (Data?) -> Void) {
+        let snapshot = records
+        ioQueue.async { [weak self] in
+            let data = self?.buildFullBackupData(from: snapshot)
+            DispatchQueue.main.async { completion(data) }
+        }
     }
 
     /// 백업 파일에서 기록을 읽는다(iCloud 우선, 없으면 로컬). 백그라운드에서 호출.

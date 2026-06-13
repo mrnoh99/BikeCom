@@ -212,19 +212,23 @@ struct RoutesView: View {
 
     // 현재 전체 기록을 백업 JSON 파일로 만들어 공유 시트로 내보낸다(재설치 전 안전 보관용).
     private func backupNow() {
-        guard let data = session.store.makeBackupData() else {
-            session.importStatus = "백업 생성 실패"; return
-        }
-        let stamp = DateFormatter()
-        stamp.dateFormat = "yyyyMMdd-HHmm"
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("BikeCom-Backup-\(stamp.string(from: Date())).json")
-        do {
-            try data.write(to: url, options: .atomic)
-            session.importStatus = "백업 파일 준비됨 · 공유 시트에서 저장/전송 (\(session.store.records.count)건)"
-            exportFile = ExportFile(url: url)
-        } catch {
-            session.importStatus = "백업 저장 실패"
+        session.importStatus = "백업 파일 만드는 중…(트랙 포함)"
+        // 트랙까지 포함한 전체본을 백그라운드에서 만든 뒤 공유 시트로 내보낸다.
+        session.store.makeBackupData { data in
+            guard let data else {
+                session.importStatus = "백업 생성 실패"; return
+            }
+            let stamp = DateFormatter()
+            stamp.dateFormat = "yyyyMMdd-HHmm"
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("BikeCom-Backup-\(stamp.string(from: Date())).json")
+            do {
+                try data.write(to: url, options: .atomic)
+                session.importStatus = "백업 파일 준비됨 · 공유 시트에서 저장/전송 (\(session.store.records.count)건)"
+                exportFile = ExportFile(url: url)
+            } catch {
+                session.importStatus = "백업 저장 실패"
+            }
         }
     }
 
