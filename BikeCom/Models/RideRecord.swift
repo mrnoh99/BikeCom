@@ -179,6 +179,7 @@ final class RideStore: ObservableObject {
 
     static let lastBackupKey = "bike.lastBackupAt"
     let backupFileName = "BikeCom-Backup.json"
+    private let backupQueue = DispatchQueue(label: "bike.backup", qos: .utility)
     private var backupLocalURL: URL {
         localURL.deletingLastPathComponent().appendingPathComponent(backupFileName)
     }
@@ -194,29 +195,40 @@ final class RideStore: ObservableObject {
         var records: [RideRecord]
     }
 
-    /// 현재 전체 기록을 백업 형식(JSON)으로 인코딩한다(내보내기·공유용).
+    /// 현재 전체 기록을 백업 형식(JSON)으로 인코딩한다(수동 내보내기·공유용).
     func makeBackupData() -> Data? {
         try? JSONEncoder().encode(Backup(count: records.count, records: records))
     }
 
+    /// 방금 저장된 rides.json 파일 자체를 백업 위치로 **복사**한다.
+    /// 기록 배열을 메모리에서 다시 인코딩하지 않아(34MB 중복 할당 회피) 메모리 급증을 막는다.
+    /// 백그라운드 큐에서 파일 바이트만 복사한다.
     private func writeBackup() {
-        guard let data = makeBackupData() else { return }
-        try? data.write(to: backupLocalURL, options: .atomic)   // Files 앱에서 꺼낼 수 있음
-        if let cloud = backupCloudURL {
-            let c = NSFileCoordinator(); var e: NSError?
-            c.coordinate(writingItemAt: cloud, options: .forReplacing, error: &e) { u in
-                try? data.write(to: u, options: .atomic)
+        let src = fileURL
+        let localDst = backupLocalURL
+        let cloudDst = backupCloudURL
+        backupQueue.async {
+            guard let data = try? Data(contentsOf: src), !data.isEmpty else { return }
+            try? data.write(to: localDst, options: .atomic)   // Files 앱에서 꺼낼 수 있음
+            if let cloudDst {
+                let c = NSFileCoordinator(); var e: NSError?
+                c.coordinate(writingItemAt: cloudDst, options: .forReplacing, error: &e) { u in
+                    try? data.write(to: u, options: .atomic)
+                }
             }
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
         }
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
     }
 
-    /// 백업 파일에서 기록을 읽는다(iCloud 우선, 없으면 로컬).
+    /// 백업 파일에서 기록을 읽는다(iCloud 우선, 없으면 로컬). 봉투·bare 배열 둘 다 허용.
     private func loadBackupRecords() -> [RideRecord]? {
         for url in [backupCloudURL, backupLocalURL].compactMap({ $0 }) {
-            if let data = try? Data(contentsOf: url),
-               let b = try? JSONDecoder().decode(Backup.self, from: data), !b.records.isEmpty {
+            guard let data = try? Data(contentsOf: url) else { continue }
+            if let b = try? JSONDecoder().decode(Backup.self, from: data), !b.records.isEmpty {
                 return b.records
+            }
+            if let arr = try? JSONDecoder().decode([RideRecord].self, from: data), !arr.isEmpty {
+                return arr
             }
         }
         return nil
