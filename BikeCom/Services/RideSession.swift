@@ -306,20 +306,24 @@ final class RideSession: ObservableObject {
     /// 기존 Cyclemeter 기록은 제거 후 시드로 교체하고, 앱·건강·GPX 기록은 유지한다.
     private func importBaselineHistoryIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: Self.baselineImportedKey) else { return }
+        let existing = store.records   // 메인 스레드(init)에서 스냅샷
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            let seed = SeedRides.load()
-            guard !seed.isEmpty else { return }
-            DispatchQueue.main.async {
+            // 디코드·병합 등 무거운 작업은 백그라운드에서 처리하고, 큰 버퍼는 즉시 해제.
+            autoreleasepool {
+                let seed = SeedRides.load()
+                guard !seed.isEmpty else { return }
                 // 기존 Cyclemeter 기록 제거 후 시드(트랙 포함) 주입. 앱·건강·GPX 기록은 유지.
-                let kept = self.store.records.filter { $0.source != .cyclemeter }
-                let merged = RideRecordMerge.merge(
-                    existing: kept,
-                    incoming: seed,
-                    incomingWins: false)
-                self.store.replaceAll(merged)
-                UserDefaults.standard.set(true, forKey: Self.baselineImportedKey)
-                self.refreshDataStats()
+                let kept = existing.filter { $0.source != .cyclemeter }
+                // 첫 설치(기존 기록 없음)면 병합 복제 없이 시드를 그대로 사용 → 피크 메모리 절감.
+                let merged = kept.isEmpty
+                    ? seed
+                    : RideRecordMerge.merge(existing: kept, incoming: seed, incomingWins: false)
+                DispatchQueue.main.async {
+                    self.store.replaceAll(merged)
+                    UserDefaults.standard.set(true, forKey: Self.baselineImportedKey)
+                    self.refreshDataStats()
+                }
             }
         }
     }

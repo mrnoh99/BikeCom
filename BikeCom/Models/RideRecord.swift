@@ -160,17 +160,35 @@ final class RideStore: ObservableObject {
         }
     }
 
+    /// 저장은 백그라운드 직렬 큐에서 수행한다. 메인 스레드에서 34MB JSON 을 인코딩하지
+    /// 않으므로 메모리 급증·UI 끊김이 없다. 한 번 인코딩한 데이터를 본파일(rides.json)과
+    /// 백업 파일 양쪽에 재사용하고, autoreleasepool 로 큰 버퍼를 즉시 해제한다.
     private func save() {
+        let snapshot = records            // 값 타입 스냅샷(COW) — 백그라운드 인코딩 안전
         let url = fileURL
-        guard let data = try? JSONEncoder().encode(records) else { return }
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                 withIntermediateDirectories: true)
-        let coordinator = NSFileCoordinator()
-        var err: NSError?
-        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
-            try? data.write(to: u, options: .atomic)
+        let localDst = backupLocalURL
+        let cloudDst = backupCloudURL
+        backupQueue.async {
+            autoreleasepool {
+                guard let data = try? JSONEncoder().encode(snapshot) else { return }
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                         withIntermediateDirectories: true)
+                let coordinator = NSFileCoordinator()
+                var err: NSError?
+                coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
+                    try? data.write(to: u, options: .atomic)
+                }
+                // 백업: 같은 데이터를 재사용(재인코딩·재독 없음).
+                try? data.write(to: localDst, options: .atomic)
+                if let cloudDst {
+                    let c = NSFileCoordinator(); var e: NSError?
+                    c.coordinate(writingItemAt: cloudDst, options: .forReplacing, error: &e) { u in
+                        try? data.write(to: u, options: .atomic)
+                    }
+                }
+                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
+            }
         }
-        writeBackup()   // 재설치·기기변경 대비 자동 백업
     }
 
     // MARK: 자동 백업 (재설치·기기변경 시 라이딩 데이터 보존)
@@ -200,25 +218,7 @@ final class RideStore: ObservableObject {
         try? JSONEncoder().encode(Backup(count: records.count, records: records))
     }
 
-    /// 방금 저장된 rides.json 파일 자체를 백업 위치로 **복사**한다.
-    /// 기록 배열을 메모리에서 다시 인코딩하지 않아(34MB 중복 할당 회피) 메모리 급증을 막는다.
-    /// 백그라운드 큐에서 파일 바이트만 복사한다.
-    private func writeBackup() {
-        let src = fileURL
-        let localDst = backupLocalURL
-        let cloudDst = backupCloudURL
-        backupQueue.async {
-            guard let data = try? Data(contentsOf: src), !data.isEmpty else { return }
-            try? data.write(to: localDst, options: .atomic)   // Files 앱에서 꺼낼 수 있음
-            if let cloudDst {
-                let c = NSFileCoordinator(); var e: NSError?
-                c.coordinate(writingItemAt: cloudDst, options: .forReplacing, error: &e) { u in
-                    try? data.write(to: u, options: .atomic)
-                }
-            }
-            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
-        }
-    }
+    // 자동 백업은 save() 안에서 본파일 저장과 함께 한 번의 인코딩으로 처리한다.
 
     /// 백업 파일에서 기록을 읽는다(iCloud 우선, 없으면 로컬). 봉투·bare 배열 둘 다 허용.
     private func loadBackupRecords() -> [RideRecord]? {
