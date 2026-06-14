@@ -551,9 +551,9 @@ final class RideSession: ObservableObject {
         importBaselineHistoryIfNeeded()
     }
 
-    // V4: 시드 트랙을 라이딩당 최대 150포인트로 다운샘플(메모리 대폭 절감). 기존 설치는
-    // 키가 바뀌면서 다음 실행에 조밀한 Cyclemeter 시드를 가벼운 시드로 교체 저장한다.
-    private static let baselineImportedKey = "bike.cyclemeterSeedV4"
+    // V5: 시드 삭제 기준을 1.5km 로 낮춰 [1.5~5km] 13건을 추가(총 1,898건). 기존 설치는
+    // 키가 바뀌면서 다음 실행에 Cyclemeter 시드를 1.5km 기준 시드로 교체 저장한다.
+    private static let baselineImportedKey = "bike.cyclemeterSeedV5"
 
     /// 앱 번들 Cyclemeter 시드(트랙 포함 JSON)를 1회 기본 기록으로 주입한다.
     /// 기존 Cyclemeter 기록은 제거 후 시드로 교체하고, 앱·건강·GPX 기록은 유지한다.
