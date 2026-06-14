@@ -17,6 +17,12 @@ enum SpeedSource {
     case gps
 }
 
+/// 속도·케이던스 센서를 어디로 연결할지 사용자 선택. 폰 BLE 직결 또는 워치 중계.
+enum SensorMode: String {
+    case phone   // 폰에 BLE CSC 직결
+    case watch   // 워치에 페어링된 센서를 중계
+}
+
 /// More 탭 데이터 출처 통계 (Cyclemeter 시드 = 기본, Health = 비중복 보충).
 struct DataStats {
     var cyclemeterBase = 0        // 기본 Cyclemeter 시드(트랙 포함) 기록 수
@@ -404,6 +410,12 @@ final class RideSession: ObservableObject {
     var speedSensorConnected: Bool { ble.speedConnected || watch.speedSensorConnected }
     var cadenceSensorConnected: Bool { ble.cadenceConnected || watch.cadenceSensorConnected }
 
+    /// 속도·케이던스를 폰(BLE) 또는 워치 중 어디로 받을지 선택. 기본은 폰 직결.
+    @Published var sensorMode: SensorMode =
+        SensorMode(rawValue: UserDefaults.standard.string(forKey: "bike.sensorMode") ?? "") ?? .phone {
+        didSet { UserDefaults.standard.set(sensorMode.rawValue, forKey: "bike.sensorMode") }
+    }
+
     /// 라이딩 설정을 저장한다(이름·자전거·휠 둘레·코스·자동 일시정지).
     func saveSettings() {
         UserDefaults.standard.set(routeName, forKey: "bike.routeName")
@@ -475,7 +487,7 @@ final class RideSession: ObservableObject {
         ble.wheelCircumferenceMeters = wheelCircumferenceMeters
         ble.$speedMps
             .sink { [weak self] v in
-                guard let self, self.ble.speedConnected else { return }
+                guard let self, self.sensorMode == .phone, self.ble.speedConnected else { return }
                 self.ingestSpeed(v, fromSource: .bleSensor)
             }
             .store(in: &cancellables)
@@ -492,7 +504,7 @@ final class RideSession: ObservableObject {
         // 케이던스: 폰 직결 BLE > 워치. 심박: 애플워치.
         ble.$cadenceRPM
             .sink { [weak self] rpm in
-                guard let self, self.ble.cadenceConnected else { return }
+                guard let self, self.sensorMode == .phone, self.ble.cadenceConnected else { return }
                 self.ingestCadence(rpm, fromSource: .bleSensor)
             }
             .store(in: &cancellables)

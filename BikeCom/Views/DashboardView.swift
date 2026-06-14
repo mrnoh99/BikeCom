@@ -24,6 +24,7 @@ struct DashboardView: View {
             VStack(spacing: 0) {
                 header(layout)
                 grid(layout)
+                statusRow(layout)
                 controls(layout)
                 gpsBar(layout)
             }
@@ -242,6 +243,53 @@ struct DashboardView: View {
         Rectangle().fill(Theme.cardBorder).frame(height: 1).padding(.horizontal, 8)
     }
 
+    // Start 버튼 위 얇은 상태 줄 — GPS/HR/CD 연결등 + 시계/폰 선택. (다른 줄의 ~절반 높이)
+    private func statusRow(_ layout: DeviceLayout.Dashboard) -> some View {
+        HStack(spacing: 16) {
+            statusDot("GPS", gpsColor)
+            statusDot("HR", hrDotColor)
+            statusDot("CD", cdDotColor)
+            Spacer(minLength: 0)
+            // 시계/폰 연결 선택 버튼
+            Button {
+                session.sensorMode = (session.sensorMode == .phone) ? .watch : .phone
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: session.sensorMode == .phone ? "iphone" : "applewatch")
+                    Text(session.sensorMode == .phone ? "폰" : "시계")
+                }
+                .font(.system(size: layout.footerFont + 2, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(session.sensorMode == .phone ? Theme.green.opacity(0.85)
+                                                                        : Theme.blue.opacity(0.85)))
+            }
+        }
+        .frame(height: max(layout.controlHeight * 0.55, 22))
+        .padding(.horizontal, layout.headerHPadding)
+    }
+
+    private func statusDot(_ label: String, _ color: Color) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 10, height: 10)
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Theme.label)
+        }
+    }
+
+    /// 연결안됨=회색, 워치연결=파랑, 폰연결=초록.
+    private var hrDotColor: Color {
+        // 심박은 현재 워치(손목)만 제공. (폰 BLE 심박 스트랩은 미지원 → green 예약)
+        session.watch.heartRateConnected ? Theme.blue : Color.gray
+    }
+    private var cdDotColor: Color {
+        if session.sensorMode == .phone, session.ble.cadenceConnected { return Theme.green }
+        if session.watch.cadenceSensorConnected { return Theme.blue }
+        return Color.gray
+    }
+
     // Start / Done 버튼 + 설정 기어
     private func controls(_ layout: DeviceLayout.Dashboard) -> some View {
         HStack(spacing: 10) {
@@ -272,10 +320,11 @@ struct DashboardView: View {
                 Divider()
                 Button { showSettings = true } label: { Label("라이딩 설정", systemImage: "slider.horizontal.3") }
             } label: {
+                // 설정 아이콘 크게 + 폭 확대 → Start 버튼 폭은 조금 줄어든다.
                 Image(systemName: "gearshape.fill")
-                    .font(.system(size: layout.gearIcon))
+                    .font(.system(size: layout.gearIcon * 1.5, weight: .semibold))
                     .foregroundColor(Theme.gold)
-                    .frame(width: layout.gearIcon + 8, height: layout.controlHeight)
+                    .frame(width: layout.gearIcon * 1.5 + 24, height: layout.controlHeight)
             }
         }
         .padding(.horizontal, layout.headerHPadding)
