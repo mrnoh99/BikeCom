@@ -251,7 +251,7 @@ struct DashboardView: View {
             statusDot("SPD", spdDotColor)
             statusDot("CD", cdDotColor)
             Spacer(minLength: 0)
-            // 시계/폰 연결 선택 버튼
+            // 시계/폰 연결 선택 버튼. (탭=모드 전환, 길게 누르면 Devices 화면으로)
             Button {
                 session.sensorMode = (session.sensorMode == .phone) ? .watch : .phone
             } label: {
@@ -266,6 +266,7 @@ struct DashboardView: View {
                 .background(Capsule().fill(session.sensorMode == .phone ? Theme.green.opacity(0.85)
                                                                         : Theme.blue.opacity(0.85)))
             }
+            .onLongPressGesture(minimumDuration: 0.4) { dest = .devices }
         }
         .frame(height: max(layout.controlHeight * 0.6, 28))
         .padding(.horizontal, layout.headerHPadding)
