@@ -29,7 +29,7 @@ struct DataStats {
     var healthTotal = 0           // Apple Health 사이클링 워크아웃 총 수
     var healthOverlap = 0         // 기본과 겹쳐 제외된 Health 워크아웃 수
     var healthNonOverlap = 0      // 겹치지 않는 Health 워크아웃 수
-    var healthExcludedFilter = 0  // 겹치지 않음 중 거리 5km 이하·속도 0 으로 제외된 수
+    var healthExcludedFilter = 0  // 겹치지 않음 중 거리 1.5km 이하·속도 0 으로 제외된 수
     var healthSupplemented = 0    // 최종 보충된 Health 기록 수(겹치지 않음 − 제외)
 
     var healthMonthKm = 0.0, healthYearKm = 0.0, healthTotalKm = 0.0   // Health(보충분)만
@@ -160,20 +160,20 @@ final class RideSession: ObservableObject {
             self?.importStatus = "Health에서 가져오는 중… \(done)/\(total)"
         }, completion: { [weak self] records in
             guard let self else { return }
-            // 주행시간 0 이거나 거리 5km 이하인 건강 기록은 제외한다.
-            let kept = records.filter { $0.duration > 0 && $0.distanceMeters > 5000 }
+            // 주행시간 0 이거나 거리 1.5km 이하인 건강 기록은 제외한다.
+            let kept = records.filter { $0.duration > 0 && $0.distanceMeters > 1500 }
             self.store.addMany(kept)
             let dropped = records.count - kept.count
             self.importStatus = dropped > 0
-                ? "Health 보충 완료: \(kept.count)개 추가 (시간 0·5km 이하 \(dropped)개 제외)"
+                ? "Health 보충 완료: \(kept.count)개 추가 (시간 0·1.5km 이하 \(dropped)개 제외)"
                 : "Health 보충 완료: 겹치지 않는 \(kept.count)개 추가"
             self.refreshDataStats()
         })
     }
 
     /// Routes 통합 정리 — Cyclemeter 시드(트랙 포함)+앱·GPX 를 기본으로 두고
-    /// 겹치지 않는 Apple 건강 기록으로 보충, 5km 이하 일괄 삭제.
-    func consolidateRoutes(minKeepKm: Double = 5) {
+    /// 겹치지 않는 Apple 건강 기록으로 보충, 1.5km 이하 일괄 삭제.
+    func consolidateRoutes(minKeepKm: Double = 1.5) {
         importStatus = "기록 통합 정리 중…"
         // 지도 코스 자료는 통합 정리 대상에서 제외하고 항상 보존한다.
         let courses = store.records.filter { $0.isCourseOnly }
@@ -191,7 +191,7 @@ final class RideSession: ObservableObject {
             guard let self else { return }
             DispatchQueue.main.async {
                 var result = base
-                // 겹치지 않는 건강 기록 보충. 가져오기와 동일하게 시간 0·5km 이하는 제외.
+                // 겹치지 않는 건강 기록 보충. 가져오기와 동일하게 시간 0·1.5km 이하는 제외.
                 for r in healthRides
                 where r.duration > 0 && r.distanceMeters > minKeepKm * 1000
                     && !result.contains(where: { RideRecordMerge.isDuplicate(r, of: $0) }) {
@@ -203,7 +203,7 @@ final class RideSession: ObservableObject {
                 result.sort { $0.startedAt > $1.startedAt }
                 self.store.replaceAll(courses + result)   // 코스 자료는 맨 앞에 보존
                 self.health.refreshTotals()
-                self.importStatus = "정리 완료: \(result.count)개 기록 · 5km 이하 \(removed)개 삭제 (Health 후보 \(healthRides.count))"
+                self.importStatus = "정리 완료: \(result.count)개 기록 · 1.5km 이하 \(removed)개 삭제 (Health 후보 \(healthRides.count))"
                 self.refreshDataStats()
             }
         })
@@ -237,8 +237,8 @@ final class RideSession: ObservableObject {
                     && abs($0.duration - w.duration) <= 120 }
             }
             let nonOverlap = healthWorkouts.filter { !overlapsBase($0) }
-            // 겹치지 않음 중 거리 5km 이하 또는 속도 0(주행시간 0)으로 제외.
-            let excluded = nonOverlap.filter { $0.duration <= 0 || $0.distanceMeters <= 5000 }
+            // 겹치지 않음 중 거리 1.5km 이하 또는 속도 0(주행시간 0)으로 제외.
+            let excluded = nonOverlap.filter { $0.duration <= 0 || $0.distanceMeters <= 1500 }
             st.healthTotal = healthWorkouts.count
             st.healthNonOverlap = nonOverlap.count
             st.healthOverlap = healthWorkouts.count - nonOverlap.count

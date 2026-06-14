@@ -933,13 +933,13 @@ private struct ConsolidateConfirmSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple Health 기록을 보충합니다. 주행거리 5km 이하·속도 0 기록은 일괄 삭제합니다.")
+                Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple Health 기록을 보충합니다. 주행거리 1.5km 이하·속도 0 기록은 일괄 삭제합니다.")
                     .font(.callout)
                     .foregroundColor(.secondary)
                 Button(role: .destructive) {
                     onRun()
                 } label: {
-                    Text("정리 실행 (5km 이하 삭제)")
+                    Text("정리 실행 (1.5km 이하 삭제)")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                 }

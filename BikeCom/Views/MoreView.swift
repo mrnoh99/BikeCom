@@ -94,12 +94,12 @@ struct MoreView: View {
                 kv("Health 전체(Apple Health)", "\(s.healthTotal)개")
                 kv("Health 겹침(제외)", "\(s.healthOverlap)개")
                 kv("Health 겹치지 않음", "\(s.healthNonOverlap)개")
-                kv("└ 5km 이하·속도 0 제외", "\(s.healthExcludedFilter)개", Theme.gold)
+                kv("└ 1.5km 이하·속도 0 제외", "\(s.healthExcludedFilter)개", Theme.gold)
                 kv("최종 Health 보충", "\(s.healthSupplemented)개", Theme.red)
             } header: {
                 Text("데이터 출처 — 기록 수")
             } footer: {
-                Text("Health \(s.healthTotal)건 중 겹치지 않는 \(s.healthNonOverlap)건에서, 거리 5km 이하·속도 0 인 \(s.healthExcludedFilter)건을 제외해 최종 \(s.healthSupplemented)건을 보충했습니다(겹침 \(s.healthOverlap)건 제외).")
+                Text("Health \(s.healthTotal)건 중 겹치지 않는 \(s.healthNonOverlap)건에서, 거리 1.5km 이하·속도 0 인 \(s.healthExcludedFilter)건을 제외해 최종 \(s.healthSupplemented)건을 보충했습니다(겹침 \(s.healthOverlap)건 제외).")
             }
             Section {
                 distRow("이번 달", s.healthMonthKm, s.cycMonthKm, s.bothMonthKm)
