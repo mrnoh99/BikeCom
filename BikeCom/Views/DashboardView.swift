@@ -272,8 +272,8 @@ struct DashboardView: View {
     }
 
     private func statusDot(_ label: String, _ color: Color) -> some View {
-        HStack(spacing: 4) {
-            Circle().fill(color).frame(width: 10, height: 10)
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 16, height: 16)
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(Theme.label)
