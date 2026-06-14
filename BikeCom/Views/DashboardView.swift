@@ -267,13 +267,14 @@ struct DashboardView: View {
                                                                         : Theme.blue.opacity(0.85)))
             }
         }
-        .frame(height: max(layout.controlHeight * 0.55, 22))
+        .frame(height: max(layout.controlHeight * 0.6, 28))
         .padding(.horizontal, layout.headerHPadding)
     }
 
     private func statusDot(_ label: String, _ color: Color) -> some View {
         HStack(spacing: 5) {
-            Circle().fill(color).frame(width: 16, height: 16)
+            // 애플워치 연결등과 동일한 크기(22px).
+            Circle().fill(color).frame(width: 22, height: 22)
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(Theme.label)
