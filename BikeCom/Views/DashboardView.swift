@@ -362,24 +362,16 @@ struct DashboardView: View {
         session.state == .running ? Theme.red : Theme.green
     }
 
-    // GPS 정확도 표시줄
+    // 하단 크레딧(가운데 정렬). GPS 표시는 상단 상태 줄로 이동했다.
     private func gpsBar(_ layout: DeviceLayout.Dashboard) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .font(.system(size: layout.footerFont + 1))
-                .foregroundColor(gpsColor)
-            Text("GPS")
-                .font(.system(size: layout.footerFont + 1, weight: .semibold))
-                .foregroundColor(Theme.label)
-            Spacer()
-            Text("Developed by JaiSung NOH MD 2026")
-                .font(.system(size: layout.footerFont))
-                .foregroundColor(Theme.label)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .padding(.horizontal, layout.headerHPadding)
-        .padding(.bottom, 2)
+        Text("Developed by JaiSung NOH MD 2026")
+            .font(.system(size: layout.footerFont))
+            .foregroundColor(Theme.label)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, layout.headerHPadding)
+            .padding(.bottom, 2)
     }
 
     private var gpsColor: Color {
