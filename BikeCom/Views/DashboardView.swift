@@ -246,7 +246,7 @@ struct DashboardView: View {
     // Start 버튼 위 얇은 상태 줄 — GPS/HR/CD 연결등 + 시계/폰 선택. (다른 줄의 ~절반 높이)
     private func statusRow(_ layout: DeviceLayout.Dashboard) -> some View {
         HStack(spacing: 12) {
-            statusDot("GPS", gpsColor)
+            statusIcon("location.fill", "GPS", gpsColor)
             statusDot("HR", hrDotColor)
             statusDot("SPD", spdDotColor)
             statusDot("CD", cdDotColor)
@@ -275,6 +275,18 @@ struct DashboardView: View {
         HStack(spacing: 5) {
             // 애플워치 연결등과 동일한 크기(22px).
             Circle().fill(color).frame(width: 22, height: 22)
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Theme.label)
+        }
+    }
+
+    /// GPS 는 점 대신 GPS 아이콘으로 표시(신호 정확도 색).
+    private func statusIcon(_ symbol: String, _ label: String, _ color: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(color)
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(Theme.label)
