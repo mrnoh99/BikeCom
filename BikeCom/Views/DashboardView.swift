@@ -245,9 +245,10 @@ struct DashboardView: View {
 
     // Start 버튼 위 얇은 상태 줄 — GPS/HR/CD 연결등 + 시계/폰 선택. (다른 줄의 ~절반 높이)
     private func statusRow(_ layout: DeviceLayout.Dashboard) -> some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             statusDot("GPS", gpsColor)
             statusDot("HR", hrDotColor)
+            statusDot("SPD", spdDotColor)
             statusDot("CD", cdDotColor)
             Spacer(minLength: 0)
             // 시계/폰 연결 선택 버튼
@@ -283,6 +284,11 @@ struct DashboardView: View {
     private var hrDotColor: Color {
         // 심박은 현재 워치(손목)만 제공. (폰 BLE 심박 스트랩은 미지원 → green 예약)
         session.watch.heartRateConnected ? Theme.blue : Color.gray
+    }
+    private var spdDotColor: Color {
+        if session.sensorMode == .phone, session.ble.speedConnected { return Theme.green }
+        if session.watch.speedSensorConnected { return Theme.blue }
+        return Color.gray
     }
     private var cdDotColor: Color {
         if session.sensorMode == .phone, session.ble.cadenceConnected { return Theme.green }
