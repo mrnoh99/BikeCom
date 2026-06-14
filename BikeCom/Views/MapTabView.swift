@@ -12,8 +12,11 @@ struct MapTabView: View {
         span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
     @State private var showPastCourses = false
     @State private var recenterToken = 0
+    /// 사용자가 직접 켠 내비게이션 모드(코스 따라가기와 무관). 영속 저장.
+    @AppStorage("map.navMode") private var navManual = false
 
-    private var navigating: Bool { !session.followCourseTrack.isEmpty }
+    /// 코스를 따라가는 중이거나, 사용자가 수동으로 내비 모드를 켜면 내비게이션 표시.
+    private var navigating: Bool { navManual || !session.followCourseTrack.isEmpty }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -56,9 +59,18 @@ struct MapTabView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             VStack(alignment: .trailing, spacing: 10) {
+                // 내비게이션 모드 토글 — 코스 따라가기가 아니어도 켤 수 있다.
+                Button { navManual.toggle() } label: {
+                    Label(navigating ? "내비 ON" : "내비 OFF", systemImage: "location.north.line.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(navigating ? .white : .primary)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(navigating ? AnyShapeStyle(Theme.blue) : AnyShapeStyle(.ultraThinMaterial),
+                                    in: Capsule())
+                }
                 if navigating {
                     Button { recenterToken += 1 } label: {
-                        Label("내비 재중심", systemImage: "location.north.line.fill")
+                        Label("재중심", systemImage: "scope")
                             .font(.system(size: 14, weight: .semibold))
                             .padding(.horizontal, 14).padding(.vertical, 10)
                             .background(.ultraThinMaterial, in: Capsule())
