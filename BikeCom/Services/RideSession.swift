@@ -421,7 +421,9 @@ final class RideSession: ObservableObject {
     }
 
     /// 주행 기록을 지도 코스로 복제한다(원본은 통계 유지, 복사본은 코스 전용·맨 위).
-    func addCourseCopy(of record: RideRecord, name: String? = nil) {
+    /// 추가 완료 시 코스 이름으로 completion 을 호출한다(확인 메시지 표시용).
+    func addCourseCopy(of record: RideRecord, name: String? = nil,
+                       completion: ((String) -> Void)? = nil) {
         store.loadTrack(for: record) { [weak self] coords in
             guard let self else { return }
             let trimmed = (name ?? record.mapName ?? record.name).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -436,6 +438,7 @@ final class RideSession: ObservableObject {
                 includeInMap: true, mapName: courseName, isCourseOnly: true)
             self.store.add(copy)
             self.importStatus = "지도 코스로 추가됨: \(courseName)"
+            completion?(courseName)
         }
     }
 

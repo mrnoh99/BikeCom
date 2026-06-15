@@ -580,6 +580,7 @@ struct RideDetailView: View {
     @State private var startPlace = ""
     @State private var endPlace = ""
     @State private var mapNameDraft = ""
+    @State private var addedCourseName: String?
 
     init(record: RideRecord, unit: DistanceUnit) {
         _record = State(initialValue: record)
@@ -689,6 +690,13 @@ struct RideDetailView: View {
         } message: {
             Text("삭제하면 목록에서 제거됩니다. (Apple Health·캘린더 기록은 영향받지 않습니다)")
         }
+        .alert("지도 코스로 추가됨", isPresented: Binding(
+            get: { addedCourseName != nil },
+            set: { if !$0 { addedCourseName = nil } })) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text("‘\(addedCourseName ?? "")’ 코스가 지도 코스 목록에 추가되었습니다.")
+        }
         .onAppear {
             guard loadedTrack.isEmpty, record.trackCount > 0 else { return }
             session.store.loadTrack(for: record) { t in
@@ -740,7 +748,9 @@ struct RideDetailView: View {
                 TextField("코스 이름 (비우면 코스명 사용)", text: $mapNameDraft)
                     .textFieldStyle(.roundedBorder)
                 Button {
-                    session.addCourseCopy(of: record, name: mapNameDraft)
+                    session.addCourseCopy(of: record, name: mapNameDraft) { name in
+                        addedCourseName = name
+                    }
                 } label: {
                     Label("지도 코스로 복사 추가", systemImage: "plus.rectangle.on.folder")
                         .font(.system(size: 15, weight: .semibold))
