@@ -950,7 +950,8 @@ final class RideSession: ObservableObject {
         case .bleSensor: break
         }
         currentSpeedMps = mps
-        if mps > maxSpeedMps { maxSpeedMps = mps }
+        // 최고 속도도 라이딩 중에만 갱신(idle/재시작 시 캐시 속도가 최고치에 반영되지 않게).
+        if state == .running, mps > maxSpeedMps { maxSpeedMps = mps }
     }
 
     private var lastCadenceAt: [SpeedSource: Date] = [:]
@@ -961,20 +962,21 @@ final class RideSession: ObservableObject {
         if source == .watch, let t = lastCadenceAt[.bleSensor],
            now.timeIntervalSince(t) <= speedFreshness { return }
         cadence = rpm
-        if let rpm, rpm > 0 {
+        // Max·평균 누적은 라이딩 중에만(재시작 시 재전달되는 캐시 값이 최고치에 반영되지 않게).
+        if let rpm, rpm > 0, state == .running {
             maxCadence = max(maxCadence ?? 0, rpm)
-            if state == .running { cadenceSamples.append(rpm) }
+            cadenceSamples.append(rpm)
         }
     }
 
     private func ingestHeartRate(_ bpm: Int?) {
         heartRate = bpm
-        if let bpm, bpm > 0 {
+        // Max·평균 누적은 라이딩 중에만. (idle 상태나 재시작 시 워치가 재전달하는
+        // 캐시된 심박이 최고 심박에 반영되는 것을 막는다.)
+        if let bpm, bpm > 0, state == .running {
             maxHeartRate = max(maxHeartRate ?? 0, bpm)
-            if state == .running {
-                heartRateSamples.append(bpm)
-                hrSeries.append((Date(), bpm))
-            }
+            heartRateSamples.append(bpm)
+            hrSeries.append((Date(), bpm))
         }
     }
 
