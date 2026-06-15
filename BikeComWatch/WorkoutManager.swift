@@ -4,11 +4,23 @@ import WatchConnectivity
 
 /// 워치에서 사이클링 워크아웃 세션을 돌려 실시간 심박수·속도·케이던스를 수집하고
 /// `WCSession` 으로 아이폰에 전송한다.
+/// 주행 종료 직후 워치에 잠깐 보여주는 요약(거리·시간·평균 속도·평균 심박·평균 케이던스).
+struct WorkoutSummary: Identifiable {
+    let id = UUID()
+    let distanceMeters: Double
+    let elapsedSeconds: TimeInterval
+    let avgSpeedMps: Double
+    let avgHeartRate: Int
+    let avgCadenceRPM: Int
+}
+
 final class WorkoutManager: NSObject, ObservableObject {
     static let shared = WorkoutManager()
 
     @Published var heartRate: Int = 0
     @Published var isRunning = false
+    /// 주행 종료 시 채워지는 요약(요약 시트 표시용). 닫으면 nil.
+    @Published var summary: WorkoutSummary?
 
     @Published var spo2: Int = 0
     @Published var measuringSpO2 = false
@@ -230,6 +242,15 @@ final class WorkoutManager: NSObject, ObservableObject {
         outboundContext.removeValue(forKey: "speedMps")
         outboundContext.removeValue(forKey: "cadence")
         DispatchQueue.main.async {
+            // 지표 초기화 전에 요약 캡처(의미 있는 주행일 때만 표시).
+            if self.distanceMeters > 0 || self.elapsedSeconds >= 5 {
+                self.summary = WorkoutSummary(
+                    distanceMeters: self.distanceMeters,
+                    elapsedSeconds: self.elapsedSeconds,
+                    avgSpeedMps: self.avgSpeedMps,
+                    avgHeartRate: self.avgHeartRate,
+                    avgCadenceRPM: self.avgCadenceRPM)
+            }
             self.isRunning = false
             self.heartRate = 0
             self.speedMps = 0
