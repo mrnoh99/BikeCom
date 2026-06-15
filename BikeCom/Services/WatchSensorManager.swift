@@ -184,6 +184,20 @@ final class WatchSensorManager: NSObject, ObservableObject {
         pushWatchContext()
     }
 
+    private var lastMirrorAt = Date.distantPast
+    /// 폰의 현재 속도·케이던스를 워치로 미러링한다(워치 로컬 센서가 없을 때 워치 화면 표시용).
+    /// reachable 일 때만, 1초 간격으로 보낸다(WCSession 예산 보호).
+    func sendDisplayMetrics(speedMps: Double, cadence: Int?) {
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isReachable else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastMirrorAt) >= 1.0 else { return }
+        lastMirrorAt = now
+        var payload: [String: Any] = ["mSpeed": speedMps]
+        if let cadence { payload["mCad"] = cadence }
+        s.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+    }
+
     private func launchWatchApp(config: HKWorkoutConfiguration, attempt: Int) {
         healthStore.startWatchApp(with: config) { [weak self] success, error in
             DispatchQueue.main.async {

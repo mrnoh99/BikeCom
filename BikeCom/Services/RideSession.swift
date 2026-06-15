@@ -956,6 +956,8 @@ final class RideSession: ObservableObject {
         // 거리는 항상 폰 GPS 기준.
         distanceMeters = location.distanceMeters
         accumulateElevationGain()
+        // 폰이 가진 속도·케이던스를 워치로 미러링(워치 자체 센서가 없을 때 워치 화면 표시).
+        watch.sendDisplayMetrics(speedMps: currentSpeedMps, cadence: cadence)
     }
 
     /// moving time·평균속도용 속도 — 센서 연결 시 BLE/워치, 없으면 GPS.

@@ -67,6 +67,9 @@ final class WorkoutManager: NSObject, ObservableObject {
     private let sensorFreshness: TimeInterval = 5
     private var lastSpeedSampleAt: Date?
     private var lastCadenceSampleAt: Date?
+    // 폰→워치 미러링 값의 신선도(워치 로컬 센서가 없을 때 화면 표시용).
+    private var lastMirrorSpeedAt: Date?
+    private var lastMirrorCadAt: Date?
 
     private var latestSpeedMps: Double?
     private var latestCadenceRPM: Int?
@@ -336,8 +339,8 @@ final class WorkoutManager: NSObject, ObservableObject {
     /// 공유 저장소(App Group)에 최신 지표를 기록한다(컴플리케이션 표시용).
     private func refreshSensorFlagsAndPersist() {
         let now = Date()
-        let speedOn = lastSpeedSampleAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
-        let cadOn = lastCadenceSampleAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
+        let speedOn = sensorOn(lastSpeedSampleAt, lastMirrorSpeedAt, now)
+        let cadOn = sensorOn(lastCadenceSampleAt, lastMirrorCadAt, now)
         DispatchQueue.main.async {
             self.speedSensorConnected = speedOn
             self.cadenceSensorConnected = cadOn
@@ -345,10 +348,17 @@ final class WorkoutManager: NSObject, ObservableObject {
         persistSnapshot()
     }
 
+    /// 로컬 워치 센서 또는 폰 미러 중 하나라도 최근이면 연결로 본다.
+    private func sensorOn(_ local: Date?, _ mirror: Date?, _ now: Date) -> Bool {
+        let l = local.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
+        let m = mirror.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
+        return l || m
+    }
+
     private func persistSnapshot(forceReload: Bool = false) {
         let now = Date()
-        let speedOn = lastSpeedSampleAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
-        let cadOn = lastCadenceSampleAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
+        let speedOn = sensorOn(lastSpeedSampleAt, lastMirrorSpeedAt, now)
+        let cadOn = sensorOn(lastCadenceSampleAt, lastMirrorCadAt, now)
         let snap = RideMetricsStore.Snapshot(
             isRunning: isRunning,
             heartRate: heartRate,
@@ -367,6 +377,8 @@ final class WorkoutManager: NSObject, ObservableObject {
     private func resetRideMetrics() {
         lastSpeedSampleAt = nil
         lastCadenceSampleAt = nil
+        lastMirrorSpeedAt = nil
+        lastMirrorCadAt = nil
         DispatchQueue.main.async {
             self.avgHeartRate = 0
             self.speedMps = 0
@@ -591,6 +603,28 @@ extension WorkoutManager: WCSessionDelegate {
             if message["releaseSensors"] as? Bool == true {
                 self.speedCadenceRelayEnabled = false
                 self.applyRelayPolicy()
+            }
+            // 폰→워치 미러링: 폰이 가진 현재 속도·케이던스를 화면에 표시한다.
+            // 단, 워치 로컬 센서가 최근 값을 주고 있으면 그쪽을 우선한다.
+            self.ingestMirroredMetrics(message)
+        }
+    }
+
+    /// 폰이 보낸 표시용 속도·케이던스(mSpeed·mCad)를 반영한다(로컬 센서가 stale 일 때만).
+    private func ingestMirroredMetrics(_ message: [String: Any]) {
+        let now = Date()
+        if let mps = (message["mSpeed"] as? Double) ?? (message["mSpeed"] as? NSNumber)?.doubleValue {
+            let localFresh = lastSpeedSampleAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
+            if !localFresh {
+                lastMirrorSpeedAt = now
+                speedMps = mps
+            }
+        }
+        if let rpm = (message["mCad"] as? Int) ?? (message["mCad"] as? NSNumber)?.intValue {
+            let localFresh = lastCadenceSampleAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
+            if !localFresh {
+                lastMirrorCadAt = now
+                cadenceRPM = rpm
             }
         }
     }
