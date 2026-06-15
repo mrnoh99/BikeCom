@@ -61,6 +61,26 @@ struct MoreView: View {
                 MoreSensorRows(watch: session.watch, location: session.location, unit: session.unit)
             }
             Section {
+                HStack {
+                    Text("워치 세션 복구")
+                    Spacer()
+                    Text("\(session.watch.watchRecoveryCount)회")
+                        .foregroundColor(session.watch.watchRecoveryCount > 0 ? Theme.gold : .secondary)
+                }
+                if let at = session.watch.watchRecoveryAt {
+                    HStack {
+                        Text("최근 복구")
+                        Spacer()
+                        Text(at.formatted(date: .abbreviated, time: .shortened))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } header: {
+                Text("워치 진단")
+            } footer: {
+                Text("라이딩 중 워치 앱이 watchOS 에 의해 강제 종료된 뒤 자동 복귀한 누적 횟수입니다(워치가 보고). 장시간 라이딩에서 1~2회는 정상 메모리 관리 범위입니다.")
+            }
+            Section {
                 HStack { Text("버전"); Spacer(); Text("1.0").foregroundColor(.secondary) }
                 HStack {
                     Text("개발")

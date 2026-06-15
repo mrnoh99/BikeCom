@@ -20,6 +20,14 @@ final class WatchSensorManager: NSObject, ObservableObject {
     @Published private(set) var spo2: Double?
     @Published private(set) var spo2Date: Date?
 
+    /// 진단: 워치가 보고한 "주행 중 비정상 종료→복귀" 누적 횟수와 마지막 복귀 시각.
+    @Published private(set) var watchRecoveryCount: Int =
+        UserDefaults.standard.integer(forKey: "watch.recoveryCount")
+    @Published private(set) var watchRecoveryAt: Date? = {
+        let t = UserDefaults.standard.double(forKey: "watch.recoveryAt")
+        return t > 0 ? Date(timeIntervalSince1970: t) : nil
+    }()
+
     private(set) var didReceiveWatchDataThisRide = false
 
     // MARK: 워크아웃 동기화 (폰이 단일 권위; 워치는 이 레벨을 따라감)
@@ -260,6 +268,18 @@ final class WatchSensorManager: NSObject, ObservableObject {
                 guard !self.workoutStartedAcknowledged else { return }
                 self.workoutStartedAcknowledged = true
                 self.statusMessage = "워치 워크아웃 시작됨"
+            }
+        }
+        // 워치 진단(세션 복구 횟수) — 센서 데이터와 무관하게 항상 반영·영속.
+        if let rc = WCPayload.int(message, "watchRecoveryCount") {
+            let at = WCPayload.double(message, "watchRecoveryAt")
+            DispatchQueue.main.async {
+                self.watchRecoveryCount = rc
+                UserDefaults.standard.set(rc, forKey: "watch.recoveryCount")
+                if let at {
+                    self.watchRecoveryAt = Date(timeIntervalSince1970: at)
+                    UserDefaults.standard.set(at, forKey: "watch.recoveryAt")
+                }
             }
         }
         if let v = WCPayload.double(message, "spo2") {

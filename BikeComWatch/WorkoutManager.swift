@@ -428,6 +428,16 @@ final class WorkoutManager: NSObject, ObservableObject {
         }
     }
 
+    /// 진단(세션 복구 횟수)을 폰에 전송한다. transferUserInfo 로 큐잉되어
+    /// 폰이 백그라운드/미실행이어도 다음에 깨어날 때 전달된다.
+    private func sendDiagnostics() {
+        let s = WCSession.default
+        guard s.activationState == .activated else { return }
+        var payload: [String: Any] = ["watchRecoveryCount": recoveryCount]
+        if let at = lastRecoveryAt { payload["watchRecoveryAt"] = at.timeIntervalSince1970 }
+        s.transferUserInfo(payload)
+    }
+
     /// 1회성 이벤트(workoutStarted·오류·SpO₂) — context 에 넣지 않는다(상태 깜빡임·재처리 방지).
     private func sendEphemeral(_ payload: [String: Any]) {
         guard !payload.isEmpty else { return }
@@ -545,6 +555,7 @@ extension WorkoutManager: WCSessionDelegate {
         guard activationState == .activated else { return }
         let ctx = session.receivedApplicationContext
         if !ctx.isEmpty { handleCommand(ctx) }
+        sendDiagnostics()   // 폰에 세션 복구 횟수 보고(큐잉)
     }
 
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
