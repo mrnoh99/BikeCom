@@ -115,7 +115,7 @@ struct DashboardView: View {
     private func bikeMenu(_ layout: DeviceLayout.Dashboard) -> some View {
         Menu {
             ForEach(RideSession.bikePresets, id: \.self) { name in
-                Button(name) { session.bikeName = name }
+                Button(name) { session.selectBike(name) }   // 등록된 휠 규격 자동 적용
             }
             Divider()
             Button("직접 입력…") { showSettings = true }

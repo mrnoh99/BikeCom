@@ -30,14 +30,14 @@ struct WorkoutBikeIcon: View {
     }
 }
 
-/// 센서 연결 상태 표시등 — 연결 시 초록, 미연결 시 회색.
+/// 센서 연결 상태 표시등 — 연결 시 파랑(폰의 워치 연결 표기와 동일), 미연결 시 회색.
 struct ConnectionLight: View {
     let connected: Bool
     var diameter: CGFloat = 6
 
     var body: some View {
         Circle()
-            .fill(connected ? Color.green : Color.gray.opacity(0.45))
+            .fill(connected ? Color.blue : Color.gray.opacity(0.45))
             .frame(width: diameter, height: diameter)
             .accessibilityLabel(connected ? "연결됨" : "미연결")
     }

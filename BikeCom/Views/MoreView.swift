@@ -17,7 +17,7 @@ struct MoreView: View {
             Section("자전거 종류") {
                 Menu {
                     ForEach(RideSession.bikePresets, id: \.self) { name in
-                        Button(name) { session.bikeName = name }
+                        Button(name) { session.selectBike(name) }   // 등록된 휠 규격 자동 적용
                     }
                 } label: {
                     HStack {

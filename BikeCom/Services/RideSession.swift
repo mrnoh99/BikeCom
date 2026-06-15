@@ -138,6 +138,7 @@ final class RideSession: ObservableObject {
 
         static func fresh(rideName: String) -> RideSaveProgress {
             RideSaveProgress(rideName: rideName, steps: [
+                Step(id: "prepare", title: "주행 데이터 정리"),
                 Step(id: "list", title: "라이딩 기록 저장"),
                 Step(id: "health", title: "Health 앱 저장"),
                 Step(id: "calendar", title: "캘린더 저장"),
@@ -452,6 +453,35 @@ final class RideSession: ObservableObject {
         }
     }
 
+    /// 자전거별 휠 규격(자전거 이름 → WheelPresets 옵션 id). 자전거를 처음 등록할 때
+    /// 휠 크기를 정해 두면, 이후 그 자전거를 선택할 때마다 휠 둘레가 자동 적용된다.
+    @Published private(set) var bikeWheels: [String: String] =
+        (UserDefaults.standard.dictionary(forKey: "bike.bikeWheels") as? [String: String]) ?? [:]
+
+    /// 해당 자전거에 등록된 휠 옵션 id(없으면 nil).
+    func wheelOptionId(forBike bike: String) -> String? { bikeWheels[bike] }
+
+    /// 자전거 선택 — 등록된 휠 규격이 있으면 그 둘레를 즉시 적용한다.
+    func selectBike(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        bikeName = trimmed
+        if let id = bikeWheels[trimmed], let opt = WheelPresets.option(id: id) {
+            wheelCircumferenceMeters = opt.circumferenceMeters
+        }
+    }
+
+    /// 자전거의 휠 규격을 등록/갱신한다. 현재 선택된 자전거면 둘레도 즉시 반영한다.
+    func setWheel(optionId: String, forBike bike: String) {
+        let trimmed = bike.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, WheelPresets.option(id: optionId) != nil else { return }
+        bikeWheels[trimmed] = optionId
+        UserDefaults.standard.set(bikeWheels, forKey: "bike.bikeWheels")
+        if trimmed == bikeName, let opt = WheelPresets.option(id: optionId) {
+            wheelCircumferenceMeters = opt.circumferenceMeters
+        }
+    }
+
     /// 속도·케이던스 센서 연결 상태 — 현재 sensorMode 기준(폰 BLE / 워치 중계).
     var speedSensorConnected: Bool {
         sensorMode == .phone ? ble.speedConnected : watch.speedSensorConnected
@@ -721,18 +751,35 @@ final class RideSession: ObservableObject {
         }
         location.stopRecording()
         watch.stopWatchWorkout()   // 워치 워크아웃 세션 종료(저장은 폰이 담당)
-
-        let record = makeRecord(startedAt: started)
         state = .idle
 
-        if record.duration >= 600 {     // 10분 이상 → 자동 저장
-            performSave(record)
-        } else {                         // 10분 미만 → 저장/삭제 선택지
-            pendingShortRide = record
+        if rideSeconds >= 600 {     // 10분 이상 → 자동 저장(진행 시트 즉시 표시)
+            beginSaveFlow(startedAt: started)
+        } else {                     // 10분 미만 → 저장/삭제 선택지(트랙 적어 즉시 생성)
+            pendingShortRide = makeRecord(startedAt: started, track: buildTrackPoints())
         }
     }
 
-    private func makeRecord(startedAt started: Date) -> RideRecord {
+    /// Done 직후 **즉시** 진행 시트를 띄우고("주행 데이터 정리"), 무거운 트랙 생성
+    /// (심박 시계열 매칭)은 백그라운드에서 처리한다. 긴 라이딩에서 메인 스레드가
+    /// 멈춰 앱이 중단된 것처럼 보이던 문제를 해결한다.
+    private func beginSaveFlow(startedAt started: Date) {
+        saveProgress = .fresh(rideName: routeName)   // 즉시 표시
+        setSaveStep("prepare", .running)
+        // 매칭 입력을 메인에서 스냅샷(이후 변경 없음: 기록 정지 상태) → 백그라운드 매칭.
+        let locs = location.locations
+        let hr = hrSeries
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let track = Self.matchTrack(locs: locs, hrSeries: hr)
+            DispatchQueue.main.async {
+                self.setSaveStep("prepare", .success)
+                self.performSave(self.makeRecord(startedAt: started, track: track))
+            }
+        }
+    }
+
+    private func makeRecord(startedAt started: Date, track: [RideRecord.Coordinate]) -> RideRecord {
         let avgSpeed = movingSeconds > 1 ? distanceMeters / movingSeconds : 0   // 움직인 시간 기준
         return RideRecord(
             name: routeName,
@@ -748,7 +795,7 @@ final class RideSession: ObservableObject {
             avgHeartRate: avgHeartRate,
             maxCadence: maxCadence,
             avgCadence: avgCadence,
-            track: buildTrackPoints())
+            track: track)
     }
 
     /// 10분 미만 라이딩: 저장 선택.
@@ -765,7 +812,8 @@ final class RideSession: ObservableObject {
 
     /// 건강·캘린더·파일 3가지 저장을 수행하고, 단계별 진행을 발행한다.
     private func performSave(_ record: RideRecord) {
-        saveProgress = .fresh(rideName: record.name)
+        if saveProgress == nil { saveProgress = .fresh(rideName: record.name) }
+        setSaveStep("prepare", .success)
         store.add(record)
         setSaveStep("list", .success)
         setSaveStep("health", .running)
@@ -982,19 +1030,25 @@ final class RideSession: ObservableObject {
 
     /// 트랙 지점별 좌표 + 고도·시각·속도(GPS) + 심박(시계열 매칭)을 만든다.
     private func buildTrackPoints() -> [RideRecord.Coordinate] {
-        location.locations.map { loc in
+        Self.matchTrack(locs: location.locations, hrSeries: hrSeries)
+    }
+
+    /// GPS 트랙에 심박 시계열을 매칭한다(self 비참조 → 백그라운드 실행 가능).
+    private static func matchTrack(locs: [CLLocation],
+                                   hrSeries: [(time: Date, bpm: Int)]) -> [RideRecord.Coordinate] {
+        locs.map { loc in
             RideRecord.Coordinate(
                 lat: loc.coordinate.latitude,
                 lon: loc.coordinate.longitude,
                 ele: loc.verticalAccuracy >= 0 ? loc.altitude : nil,
                 time: loc.timestamp,
                 speed: loc.speed >= 0 ? loc.speed : nil,
-                hr: hrAt(loc.timestamp))
+                hr: hrAt(loc.timestamp, in: hrSeries))
         }
     }
 
     /// 해당 시각과 가장 가까운(±15초) 심박 샘플.
-    private func hrAt(_ time: Date) -> Int? {
+    private static func hrAt(_ time: Date, in hrSeries: [(time: Date, bpm: Int)]) -> Int? {
         guard !hrSeries.isEmpty else { return nil }
         var best: (dt: TimeInterval, bpm: Int)?
         for s in hrSeries {

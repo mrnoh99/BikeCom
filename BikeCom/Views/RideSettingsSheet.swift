@@ -71,9 +71,9 @@ struct RideSettingsSheet: View {
                             .foregroundColor(.secondary)
                     }
                 } header: {
-                    Text("속도 센서")
+                    Text("속도 센서 — \(bikeName.isEmpty ? "자전거" : bikeName) 휠")
                 } footer: {
-                    Text("일반 휠 규격을 선택합니다. 둘레 = π × 직경으로 속도·거리를 환산합니다.")
+                    Text("자전거마다 휠 규격을 저장합니다. 다음에 이 자전거를 선택하면 휠 둘레가 자동 적용됩니다. 둘레 = π × 직경으로 속도·거리를 환산합니다.")
                 }
                 ForEach(WheelPresets.categories) { category in
                     Section(category.title) {
@@ -105,23 +105,32 @@ struct RideSettingsSheet: View {
                 }
             }
             .onAppear(perform: loadDraft)
+            // 자전거를 바꾸면 그 자전거에 저장된 휠 규격으로 선택을 맞춘다.
+            .onChange(of: bikeName) { _, newName in
+                let key = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let id = session.wheelOptionId(forBike: key) { selectedWheelId = id }
+            }
         }
     }
 
     private func loadDraft() {
         routeName = session.routeName
         bikeName = session.bikeName
-        selectedWheelId = WheelPresets.nearest(
-            toCircumferenceMeters: session.wheelCircumferenceMeters
-        ).id
+        // 현재 자전거에 저장된 휠이 있으면 그것을, 없으면 현재 둘레에 가장 가까운 규격.
+        selectedWheelId = session.wheelOptionId(forBike: session.bikeName)
+            ?? WheelPresets.nearest(toCircumferenceMeters: session.wheelCircumferenceMeters).id
     }
 
     private func saveAndDismiss() {
         session.routeName = routeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? session.routeName : routeName
-        session.bikeName = bikeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? session.bikeName : bikeName
-        session.wheelCircumferenceMeters = selectedWheel.circumferenceMeters
+        let bike = bikeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if bike.isEmpty {
+            session.wheelCircumferenceMeters = selectedWheel.circumferenceMeters
+        } else {
+            session.selectBike(bike)                              // 자전거 선택
+            session.setWheel(optionId: selectedWheelId, forBike: bike)  // 휠 등록 + 즉시 적용
+        }
         session.saveSettings()
         dismiss()
     }
