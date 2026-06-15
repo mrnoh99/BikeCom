@@ -6,83 +6,77 @@ struct MoreView: View {
 
     var body: some View {
         List {
-                Section("라이딩") {
-                    HStack { Text("라이딩 이름"); Spacer(); TextField("", text: $session.routeName).multilineTextAlignment(.trailing) }
-                }
-                Section("자전거 종류") {
-                    Menu {
-                        ForEach(RideSession.bikePresets, id: \.self) { name in
-                            Button(name) { session.bikeName = name }
-                        }
-                    } label: {
-                        HStack {
-                            Text("종류")
-                            Spacer()
-                            Text(session.bikeName).foregroundColor(.secondary)
-                            Image(systemName: "chevron.up.chevron.down").foregroundColor(.secondary)
-                        }
-                    }
-                    TextField("직접 입력", text: $session.bikeName)
-                }
-                Section {
-                    statRow("이번 달", session.thisMonthDistance)
-                    statRow("올해", session.thisYearDistance)
-                    statRow("전체", session.totalDistance)
-                    HStack {
-                        Text("총 라이딩 시간")
-                        Spacer()
-                        Text(formatDuration(session.totalRideTime)).foregroundColor(Theme.gold)
-                    }
-                    HStack { Text("총 라이딩 수"); Spacer(); Text("\(session.store.records.filter { !$0.isCourseOnly }.count)").foregroundColor(.secondary) }
-                } header: {
-                    Text("누적 통계")
-                } footer: {
-                    Text("총 라이딩 시간은 Cyclemeter(가져온 JSON 기록)와 Apple Health의 사이클링 운동을 시작 시각 기준으로 중복 없이 합산합니다.")
-                }
-                Section("지도 코스") {
-                    NavigationLink {
-                        CourseManagerView()
-                    } label: {
-                        Label("지도 코스 관리", systemImage: "map")
-                    }
-                }
-                dataSourceSection
-                Section("센서") {
-                    HStack {
-                        Text("위치 권한")
-                        Spacer()
-                        Text(session.location.authorized ? "허용됨" : "필요")
-                            .foregroundColor(session.location.authorized ? Theme.green : Theme.red)
-                    }
-                    HStack {
-                        Text("심박 측정")
-                        Spacer()
-                        Text(session.watch.watchReachable ? "Apple Watch 연결됨" : "Apple Watch")
-                            .foregroundColor(session.watch.watchReachable ? Theme.green : .secondary)
-                    }
-                    HStack {
-                        Text("워치 속도")
-                        Spacer()
-                        Text(session.watch.watchSpeedMps.map { String(format: "%.1f %@", session.unit.speed(fromMetersPerSecond: $0), session.unit.speedLabel) } ?? "수신 대기")
-                            .foregroundColor(session.watch.watchSpeedMps != nil ? Theme.green : .secondary)
-                    }
-                    HStack {
-                        Text("워치 케이던스")
-                        Spacer()
-                        Text(session.watch.watchCadenceRPM.map { "\($0) rpm" } ?? "수신 대기")
-                            .foregroundColor(session.watch.watchCadenceRPM != nil ? Theme.green : .secondary)
-                    }
-                }
-                Section {
-                    HStack { Text("버전"); Spacer(); Text("1.0").foregroundColor(.secondary) }
-                    HStack { Text("개발"); Spacer(); Text("Developed by JaiSung NOH MD 2026").foregroundColor(.secondary) }
-                } footer: {
-                    Text("데이터 가져오기·기록 통합 정리는 Routes(라이딩 기록) 첫 페이지의 ⤓ 메뉴로 옮겼습니다. 속도·케이던스는 워치에 페어링한 BLE 센서만 사용합니다.")
+            Section("라이딩") {
+                HStack {
+                    Text("라이딩 이름")
+                    Spacer()
+                    TextField("", text: $session.routeName)
+                        .multilineTextAlignment(.trailing)
                 }
             }
-            .navigationTitle("More")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear { session.refreshDataStats() }
+            Section("자전거 종류") {
+                Menu {
+                    ForEach(RideSession.bikePresets, id: \.self) { name in
+                        Button(name) { session.bikeName = name }
+                    }
+                } label: {
+                    HStack {
+                        Text("종류")
+                        Spacer()
+                        Text(session.bikeName).foregroundColor(.secondary)
+                        Image(systemName: "chevron.up.chevron.down").foregroundColor(.secondary)
+                    }
+                }
+                TextField("직접 입력", text: $session.bikeName)
+            }
+            Section {
+                statRow("이번 달", session.thisMonthDistance)
+                statRow("올해", session.thisYearDistance)
+                statRow("전체", session.totalDistance)
+                HStack {
+                    Text("총 라이딩 시간")
+                    Spacer()
+                    Text(formatDuration(session.totalRideTime)).foregroundColor(Theme.gold)
+                }
+                HStack {
+                    Text("총 라이딩 수")
+                    Spacer()
+                    Text("\(session.store.records.filter { !$0.isCourseOnly }.count)")
+                        .foregroundColor(.secondary)
+                }
+            } header: {
+                Text("누적 통계")
+            } footer: {
+                Text("총 라이딩 시간은 Cyclemeter(가져온 JSON 기록)와 Apple Health의 사이클링 운동을 시작 시각 기준으로 중복 없이 합산합니다.")
+            }
+            Section("지도 코스") {
+                NavigationLink {
+                    CourseManagerView()
+                } label: {
+                    Label("지도 코스 관리", systemImage: "map")
+                }
+            }
+            dataSourceSection
+            Section("센서") {
+                MoreSensorRows(watch: session.watch, location: session.location, unit: session.unit)
+            }
+            Section {
+                HStack { Text("버전"); Spacer(); Text("1.0").foregroundColor(.secondary) }
+                HStack {
+                    Text("개발")
+                    Spacer()
+                    Text("Developed by JaiSung NOH MD 2026").foregroundColor(.secondary)
+                }
+            } footer: {
+                Text("데이터 가져오기·기록 통합 정리는 Routes(라이딩 기록) 첫 페이지의 ⤓ 메뉴로 옮겼습니다. 속도·케이던스는 워치에 페어링한 BLE 센서만 사용합니다.")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollDismissesKeyboard(.interactively)
+        .contentMargins(.bottom, 12, for: .scrollContent)
+        .navigationTitle("More")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { session.refreshDataStats() }
     }
 
     // MARK: - 데이터 출처 통계
@@ -159,6 +153,54 @@ struct MoreView: View {
             Spacer()
             Text(String(format: "%.0f %@", value, session.unit.distanceLabel)).foregroundColor(Theme.purple)
         }
+    }
+}
+
+/// 센서 행만 국소 갱신 — watch 상태 변경이 More List 전체 재렌더·스크롤 끊김을 일으키지 않게 한다.
+private struct MoreSensorRows: View {
+    @ObservedObject var watch: WatchSensorManager
+    @ObservedObject var location: LocationManager
+    let unit: DistanceUnit
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            Group {
+                HStack {
+                    Text("위치 권한")
+                    Spacer()
+                    Text(location.authorized ? "허용됨" : "필요")
+                        .foregroundColor(location.authorized ? Theme.green : Theme.red)
+                }
+                HStack {
+                    Text("심박 측정")
+                    Spacer()
+                    Text(watch.watchReachable ? "Apple Watch 연결됨" : "Apple Watch")
+                        .foregroundColor(watch.watchReachable ? Theme.green : .secondary)
+                }
+                HStack {
+                    Text("워치 속도")
+                    Spacer()
+                    Text(speedText)
+                        .foregroundColor(watch.watchSpeedMps != nil ? Theme.green : .secondary)
+                }
+                HStack {
+                    Text("워치 케이던스")
+                    Spacer()
+                    Text(cadenceText)
+                        .foregroundColor(watch.watchCadenceRPM != nil ? Theme.green : .secondary)
+                }
+            }
+        }
+    }
+
+    private var speedText: String {
+        guard let mps = watch.watchSpeedMps else { return "수신 대기" }
+        return String(format: "%.1f %@", unit.speed(fromMetersPerSecond: mps), unit.speedLabel)
+    }
+
+    private var cadenceText: String {
+        guard let rpm = watch.watchCadenceRPM else { return "수신 대기" }
+        return "\(rpm) rpm"
     }
 }
 

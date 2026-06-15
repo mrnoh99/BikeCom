@@ -62,7 +62,8 @@ struct WatchContentView: View {
             HStack {
                 Spacer(minLength: 0)
                 Button {
-                    // 폰에 시작/정지 요청만 보낸다(폰 ride 상태가 단일 기준; 세션은 폰 방송을 따라감).
+                    // CONNECT: 워치 센서(심박 등)만 켬. 폰 Start 와 별개.
+                    // DISCONNECT: 폰 주행 중이면 종료 요청, 아니면 워치 세션만 종료.
                     workout.requestWorkout(!workout.isRunning)
                 } label: {
                     Text(workout.isRunning ? "DISCONNECT" : "CONNECT")

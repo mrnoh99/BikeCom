@@ -58,6 +58,9 @@ packages:
   GoogleMaps:
     url: https://github.com/googlemaps/ios-maps-sdk
     from: "9.0.0"
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation
+    exactVersion: 0.9.19
 
 targets:
   # 아이폰 앱
@@ -113,6 +116,8 @@ targets:
         codeSign: true
       - package: GoogleMaps
         product: GoogleMaps
+      - package: ZIPFoundation
+        product: ZIPFoundation
     postBuildScripts:
       - name: Verify Watch App Embed
         script: |
@@ -173,6 +178,12 @@ targets:
       # 임베드된 워치 Info.plist 에 CFBundleIconName 을 보장(설치·아이콘 표시).
       - name: Ensure Watch Icon Plist
         script: "${SRCROOT}/scripts/ensure_watch_icon_plist.sh"
+        inputFiles:
+          - $(SRCROOT)/scripts/ensure_watch_icon_plist.sh
+          - $(SRCROOT)/BikeComWatch/Assets.xcassets
+          - $(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Info.plist
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/ensure_watch_icon_plist.stamp
 
   # 애플워치 컴플리케이션 (WidgetKit accessory) — 워치 앱에 임베드
   BikeComWatchWidget:

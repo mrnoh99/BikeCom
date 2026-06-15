@@ -47,7 +47,6 @@ echo "==> BUILD SUCCEEDED"
 if [[ "${CODE_SIGNING_ALLOWED:-NO}" == "NO" ]]; then
   echo ""
   echo "참고: CODE_SIGNING_ALLOWED=NO 이므로 iPhone/Watch에 설치되지 않습니다."
-  echo "실기기 설치: xcodegen generate && open BikeCom.xcodeproj"
-  echo "  → BikeCom 스킴, 본인 Team 서명, iPhone에 Run(⌘R)"
-  echo "  → Watch 앱은 iPhone 설치 후 Watch 앱에서 'Apple Watch에 설치' 확인"
+  echo "실기기 설치: ./scripts/install_device.sh"
+  echo "  (또는 Xcode BikeCom 스킴 → iPhone 선택 → ⌘R, Watch 앱은 동기화/스크립트로 설치)"
 fi

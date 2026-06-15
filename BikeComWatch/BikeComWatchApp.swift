@@ -22,8 +22,9 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
         WorkoutManager.shared.consumePendingWorkoutCommandIfNeeded()
     }
 
-    /// 아이폰에서 라이딩을 시작하면 이 콜백으로 워크아웃 설정이 전달된다.
+    /// 아이폰 `startWatchApp` 으로 앱을 깨울 때 호출된다. 여기서 세션을 직접 시작하지 않고
+    /// 폰의 `workoutActive` 방송(reconcile)만 따른다 — 이중 HKWorkoutSession 생성·크래시 방지.
     func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
-        WorkoutManager.shared.startWorkout(configuration: workoutConfiguration)
+        WorkoutManager.shared.adoptWorkoutConfiguration(workoutConfiguration)
     }
 }

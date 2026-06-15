@@ -41,6 +41,8 @@ enum GPXImporter {
 
         let hrs = pts.compactMap { $0.hr }
         let avgHR = hrs.isEmpty ? nil : Int((Double(hrs.reduce(0, +)) / Double(hrs.count)).rounded())
+        let cads = pts.compactMap { $0.cad }
+        let avgCad = cads.isEmpty ? nil : Int((Double(cads.reduce(0, +)) / Double(cads.count)).rounded())
 
         let coords = pts.map {
             RideRecord.Coordinate(lat: $0.lat, lon: $0.lon, ele: $0.ele, time: $0.time, speed: $0.speed, hr: $0.hr)
@@ -57,7 +59,8 @@ enum GPXImporter {
             maxSpeedMps: maxSpeed,
             maxHeartRate: hrs.max(),
             avgHeartRate: avgHR,
-            maxCadence: pts.compactMap { $0.cad }.max(),
+            maxCadence: cads.max(),
+            avgCadence: avgCad,
             track: coords)
     }
 

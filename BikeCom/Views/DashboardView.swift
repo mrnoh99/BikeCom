@@ -131,7 +131,6 @@ struct DashboardView: View {
         // 등반)이 @Published 가 아니므로 session 재렌더에 의존하지 않는다 → Routes·More 는
         // 0.5초 tick 에 재렌더되지 않는다(재렌더는 주행 화면에만 한정).
         return TimelineView(.periodic(from: .now, by: 1)) { ctx in
-            let speedConnected = session.speedSensorConnected
             let cadConnected = session.cadenceSensorConnected
             let hrConnected = session.watch.heartRateConnected
             VStack(spacing: 0) {
@@ -139,22 +138,24 @@ struct DashboardView: View {
                 MetricCell(label: "Clock", value: clockFormatter.string(from: ctx.date).prefix5,
                            rowIndex: 0)
                 MetricCell(label: "Distance", value: fmt(session.displayDistance, 2),
-                           rowIndex: 0, unit: session.unit.distanceLabel)
+                           rowIndex: 0, unit: session.unit.distanceLabel,
+                           valueFontWeight: .bold)
             }
             divider
             metricRow {
                 MetricCell(label: "Speed",
-                           value: speedConnected ? fmt(session.displaySpeed, 2) : dash,
+                           value: fmt(session.displaySpeed, 2),
                            rowIndex: 1,
                            unit: session.unit.speedLabel,
-                           sensorStatus: speedConnected ? .connected : .waiting)
+                           sensorStatus: session.speedSensorConnected ? .connected : .waiting,
+                           valueFontWeight: .bold)
                 MetricCell(label: "Average", value: fmt(session.displayAverageSpeed, 2),
                            rowIndex: 1, unit: session.unit.speedLabel)
             }
             divider
             metricRow {
-                MetricCell(label: "Ride", value: formatDuration(session.rideSeconds),
-                           rowIndex: 2, subvalue: formatDuration(session.movingSeconds))
+                MetricCell(label: "Ride", value: formatDuration(session.movingSeconds),
+                           rowIndex: 2, subvalue: formatDuration(session.rideSeconds))
                 MetricCell(label: "Total", value: formatDuration(session.totalSeconds),
                            rowIndex: 2)
             }
@@ -163,13 +164,17 @@ struct DashboardView: View {
                 MetricCell(label: "HR",
                            value: hrConnected ? (session.heartRate.map(String.init) ?? dash) : dash,
                            rowIndex: 3, unit: "bpm",
-                           sensorStatus: hrConnected ? .connected : .waiting)
+                           sensorStatus: hrConnected ? .connected : .waiting,
+                           valueColorOverride: Theme.red,
+                           valueFontWeight: .bold)
                 MetricCell(label: "Mean",
                            value: session.avgHeartRate.map(String.init) ?? dash,
-                           rowIndex: 3, unit: "bpm")
+                           rowIndex: 3, unit: "bpm",
+                           valueColorOverride: Theme.red)
                 MetricCell(label: "Max",
                            value: session.maxHeartRate.map(String.init) ?? dash,
-                           rowIndex: 3, unit: "bpm")
+                           rowIndex: 3, unit: "bpm",
+                           valueColorOverride: Theme.red)
             }
             divider
             metricRow {
@@ -245,28 +250,30 @@ struct DashboardView: View {
 
     // Start 버튼 위 얇은 상태 줄 — GPS/HR/CD 연결등 + 시계/폰 선택. (다른 줄의 ~절반 높이)
     private func statusRow(_ layout: DeviceLayout.Dashboard) -> some View {
-        HStack(spacing: 12) {
-            statusIcon("location.fill", "GPS", gpsColor)
-            statusDot("HR", hrDotColor)
-            statusDot("SPD", spdDotColor)
-            statusDot("CD", cdDotColor)
-            Spacer(minLength: 0)
-            // 시계/폰 연결 선택 버튼(아이콘만). 탭=모드 전환, 길게 누르면 Devices 화면으로.
-            Button {
-                session.sensorMode = (session.sensorMode == .phone) ? .watch : .phone
-            } label: {
-                Image(systemName: session.sensorMode == .phone ? "iphone" : "applewatch")
-                    .font(.system(size: layout.footerFont + 6, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(session.sensorMode == .phone ? Theme.green.opacity(0.85)
-                                                                            : Theme.blue.opacity(0.85)))
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            HStack(spacing: 12) {
+                statusIcon("location.fill", "GPS", gpsColor)
+                statusDot("HR", hrDotColor)
+                statusDot("SPD", spdDotColor)
+                statusDot("CD", cdDotColor)
+                Spacer(minLength: 0)
+                // 시계/폰 선택 — 탭=모드 전환(상대 경로 BLE/워치 중계 상호 배타). 길게 누르면 Devices.
+                Button {
+                    session.sensorMode = (session.sensorMode == .phone) ? .watch : .phone
+                } label: {
+                    Image(systemName: session.sensorMode == .phone ? "iphone" : "applewatch")
+                        .font(.system(size: layout.footerFont + 6, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(session.sensorMode == .phone ? Theme.green.opacity(0.85)
+                                                                                : Theme.blue.opacity(0.85)))
+                }
+                .onLongPressGesture(minimumDuration: 0.4) { dest = .devices }
             }
-            .onLongPressGesture(minimumDuration: 0.4) { dest = .devices }
+            .frame(height: max(layout.controlHeight * 0.6, 28))
+            .padding(.horizontal, layout.headerHPadding)
         }
-        .frame(height: max(layout.controlHeight * 0.6, 28))
-        .padding(.horizontal, layout.headerHPadding)
     }
 
     private func statusDot(_ label: String, _ color: Color) -> some View {
@@ -293,18 +300,23 @@ struct DashboardView: View {
 
     /// 연결안됨=회색, 워치연결=파랑, 폰연결=초록.
     private var hrDotColor: Color {
-        // 심박은 현재 워치(손목)만 제공. (폰 BLE 심박 스트랩은 미지원 → green 예약)
-        session.watch.heartRateConnected ? Theme.blue : Color.gray
+        session.watch.heartRateConnected ? Theme.red : Color.gray
     }
     private var spdDotColor: Color {
-        if session.sensorMode == .phone, session.ble.speedConnected { return Theme.green }
-        if session.watch.speedSensorConnected { return Theme.blue }
-        return Color.gray
+        switch session.sensorMode {
+        case .phone:
+            return session.ble.speedConnected ? Theme.green : Color.gray
+        case .watch:
+            return session.watch.speedSensorConnected ? Theme.blue : Color.gray
+        }
     }
     private var cdDotColor: Color {
-        if session.sensorMode == .phone, session.ble.cadenceConnected { return Theme.green }
-        if session.watch.cadenceSensorConnected { return Theme.blue }
-        return Color.gray
+        switch session.sensorMode {
+        case .phone:
+            return session.ble.cadenceConnected ? Theme.green : Color.gray
+        case .watch:
+            return session.watch.cadenceSensorConnected ? Theme.blue : Color.gray
+        }
     }
 
     // Start / Done 버튼 + 설정 기어

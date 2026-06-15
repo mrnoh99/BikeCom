@@ -120,7 +120,8 @@ enum CSVImporter {
 
         let avgHR = parseInt(map.value(.avgHR, in: row))
         let maxHR = parseInt(map.value(.maxHR, in: row))
-        let maxCad = parseInt(map.value(.maxCadence, in: row) ?? map.value(.avgCadence, in: row))
+        let avgCad = parseInt(map.value(.avgCadence, in: row))
+        let maxCad = parseInt(map.value(.maxCadence, in: row))
         let bike: String? = {
             let b = map.value(.bike, in: row)?.trimmingCharacters(in: .whitespacesAndNewlines)
             return (b?.isEmpty == false && b?.lowercased() != "none") ? b : nil
@@ -143,6 +144,7 @@ enum CSVImporter {
             maxHeartRate: maxHR,
             avgHeartRate: avgHR,
             maxCadence: maxCad,
+            avgCadence: avgCad,
             track: [])
     }
 
@@ -206,6 +208,8 @@ enum CSVImporter {
         let avgSpeed = duration > 0 ? distance / duration : 0
         let hrs = points.compactMap(\.hr)
         let avgHR = hrs.isEmpty ? nil : Int((Double(hrs.reduce(0, +)) / Double(hrs.count)).rounded())
+        let cads = points.compactMap(\.cad)
+        let avgCad = cads.isEmpty ? nil : Int((Double(cads.reduce(0, +)) / Double(cads.count)).rounded())
 
         let track = points.map {
             RideRecord.Coordinate(lat: $0.lat, lon: $0.lon, ele: $0.ele, time: $0.time,
@@ -223,7 +227,8 @@ enum CSVImporter {
             maxSpeedMps: maxSp,
             maxHeartRate: hrs.max(),
             avgHeartRate: avgHR,
-            maxCadence: points.compactMap(\.cad).max(),
+            maxCadence: cads.max(),
+            avgCadence: avgCad,
             track: track)
     }
 

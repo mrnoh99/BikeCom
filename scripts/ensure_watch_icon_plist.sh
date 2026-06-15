@@ -22,3 +22,9 @@ if ! /usr/libexec/PlistBuddy -c "Print :CFBundleIcons:CFBundlePrimaryIcon:CFBund
   echo "error: failed to set CFBundleIconName on $PLIST" >&2
   exit 1
 fi
+
+# Xcode dependency analysis: output stamp so the run script phase can be skipped when unchanged.
+if [[ -n "${DERIVED_FILE_DIR:-}" ]]; then
+  mkdir -p "$DERIVED_FILE_DIR"
+  touch "$DERIVED_FILE_DIR/ensure_watch_icon_plist.stamp"
+fi

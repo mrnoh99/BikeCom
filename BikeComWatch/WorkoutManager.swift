@@ -27,11 +27,19 @@ final class WorkoutManager: NSObject, ObservableObject {
     private let healthStore = HKHealthStore()
     private var session: HKWorkoutSession?
     private var builder: HKLiveWorkoutBuilder?
+    /// `startWatchApp(toHandle:)` 로 전달된 설정. 세션 시작 시 우선 사용한다.
+    private var pendingConfiguration: HKWorkoutConfiguration?
+    /// `updateApplicationContext` 는 최신 스냅샷용 — 고빈도 호출 시 watchOS 부하·크래시 유발.
+    private var lastContextUpdateAt: Date = .distantPast
+    private let minContextInterval: TimeInterval = 1.0
     /// 시작이 진행 중인지(begin​Collection 콜백 전까지 isRunning 이 아직 false 인 구간).
     /// 이 구간의 재진입을 막아 두 번째 세션이 생기는 것을 차단한다(Ended 전이 오류 방지).
     private var isStarting = false
     /// 폰이 방송한 권위 워크아웃 레벨의 토큰(타임스탬프). 더 새 것만 채택한다.
     private var workoutToken: Double = 0
+    /// 폰 속도·케이던스 중계 허용(⌚ 모드). false 이면 주행 중이 아닐 때 세션 종료.
+    private var speedCadenceRelayEnabled = true
+    private var relayToken: Double = 0
     private var spo2Query: HKQuery?
     private var heartRateQuery: HKAnchoredObjectQuery?
     private var relayTimer: Timer?
@@ -76,8 +84,7 @@ final class WorkoutManager: NSObject, ObservableObject {
         healthStore.requestAuthorization(toShare: share, read: read) { _, _ in }
     }
 
-    /// 컴플리케이션 시작/정지 버튼 → App Group 명령 처리.
-    /// 직접 세션을 켜지 않고 폰에 요청만 보낸다(폰 ride 가 단일 기준; 워치는 방송을 따라감).
+    /// 컴플리케이션 CONNECT/DISCONNECT → 워치 센서 세션만 켜고/끔(폰 라이딩과 분리).
     func consumePendingWorkoutCommandIfNeeded() {
         guard let cmd = RideMetricsStore.consumePendingCommand() else { return }
         switch cmd {
@@ -128,7 +135,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             self.spo2 = Int((pct * 100).rounded())
             if finishMeasuring { self.measuringSpO2 = false }
         }
-        send(["spo2": pct, "spo2Date": s.endDate.timeIntervalSince1970])
+        sendEphemeral(["spo2": pct, "spo2Date": s.endDate.timeIntervalSince1970])
         if finishMeasuring { stopMeasuringSpO2() }
     }
 
@@ -137,15 +144,26 @@ final class WorkoutManager: NSObject, ObservableObject {
         DispatchQueue.main.async { self.measuringSpO2 = false }
     }
 
+    /// `WatchAppDelegate.handle` — 앱만 깨우고, 실제 시작은 폰 `workoutActive` 방송(reconcile)이 담당.
+    func adoptWorkoutConfiguration(_ configuration: HKWorkoutConfiguration) {
+        pendingConfiguration = configuration
+        let ctx = WCSession.default.receivedApplicationContext
+        let active = (ctx["workoutActive"] as? Bool) ?? (ctx["workoutActive"] as? NSNumber)?.boolValue
+        if active == true {
+            reconcile(active: true)
+        }
+    }
+
     func startWorkout(configuration: HKWorkoutConfiguration? = nil) {
         guard !isRunning, !isStarting, HKHealthStore.isHealthDataAvailable() else { return }
         isStarting = true   // 콜백 전까지 재진입(중복 세션 생성) 차단
-        let config: HKWorkoutConfiguration = configuration ?? {
+        let config: HKWorkoutConfiguration = configuration ?? pendingConfiguration ?? {
             let c = HKWorkoutConfiguration()
             c.activityType = .cycling
             c.locationType = .outdoor
             return c
         }()
+        pendingConfiguration = nil
 
         do {
             let s = try HKWorkoutSession(healthStore: healthStore, configuration: config)
@@ -176,7 +194,7 @@ final class WorkoutManager: NSObject, ObservableObject {
                     s.end()
                     self.session = nil
                     self.builder = nil
-                    self.send(["workoutError": error.localizedDescription])
+                    self.sendEphemeral(["workoutError": error.localizedDescription])
                     return
                 }
                 DispatchQueue.main.async {
@@ -185,14 +203,14 @@ final class WorkoutManager: NSObject, ObservableObject {
                     self.persistSnapshot(forceReload: true)
                 }
                 self.startHeartRateQuery(from: startDate)
-                self.send(["workoutStarted": success])
+                self.sendEphemeral(["workoutStarted": success])
                 self.sendMetricsToPhone()
             }
         } catch {
             isStarting = false
             session = nil
             builder = nil
-            send(["workoutError": error.localizedDescription])
+            sendEphemeral(["workoutError": error.localizedDescription])
         }
     }
 
@@ -260,7 +278,7 @@ final class WorkoutManager: NSObject, ObservableObject {
 
     private func startRelayTimer() {
         stopRelayTimer()
-        relayTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        relayTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             guard let self else { return }
             if let elapsed = self.builder?.elapsedTime {
                 DispatchQueue.main.async { self.elapsedSeconds = elapsed }
@@ -339,12 +357,12 @@ final class WorkoutManager: NSObject, ObservableObject {
         return payload
     }
 
+    /// 센서 스냅샷 — applicationContext 에 누적(최신값만). 고빈도 전송은 throttling.
     private func send(_ payload: [String: Any]) {
         guard !payload.isEmpty else { return }
         let s = WCSession.default
         guard s.activationState == .activated else { return }
 
-        // 페이로드에 없는 센서 키는 누적 컨텍스트에서 제거(끊긴 뒤 마지막 값 재전송 방지).
         for key in ["hr", "speedMps", "cadence"] where payload[key] == nil {
             outboundContext.removeValue(forKey: key)
         }
@@ -352,13 +370,29 @@ final class WorkoutManager: NSObject, ObservableObject {
             outboundContext[key] = value
         }
 
-        // applicationContext: 폰이 reachable 이 아니어도 최신 스냅샷 전달 (누적 상태)
-        try? s.updateApplicationContext(outboundContext)
+        let now = Date()
+        let shouldSyncContext = now.timeIntervalSince(lastContextUpdateAt) >= minContextInterval
+        if shouldSyncContext {
+            try? s.updateApplicationContext(outboundContext)
+            lastContextUpdateAt = now
+        }
 
         if s.isReachable {
-            s.sendMessage(outboundContext, replyHandler: nil, errorHandler: nil)
-        } else {
+            s.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        } else if shouldSyncContext {
             s.transferUserInfo(outboundContext)
+        }
+    }
+
+    /// 1회성 이벤트(workoutStarted·오류·SpO₂) — context 에 넣지 않는다(상태 깜빡임·재처리 방지).
+    private func sendEphemeral(_ payload: [String: Any]) {
+        guard !payload.isEmpty else { return }
+        let s = WCSession.default
+        guard s.activationState == .activated else { return }
+        if s.isReachable {
+            s.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        } else {
+            s.transferUserInfo(payload)
         }
     }
 }
@@ -387,7 +421,7 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
             self.isRunning = false
             self.stopRelayTimer()
         }
-        send(["workoutError": error.localizedDescription])
+        sendEphemeral(["workoutError": error.localizedDescription])
     }
 }
 
@@ -476,15 +510,43 @@ extension WorkoutManager: WCSessionDelegate {
         handleCommand(applicationContext)
     }
 
-    /// 폰이 방송한 권위 워크아웃 레벨(workoutActive)에 세션을 정합한다.
-    /// 더 새 토큰만 채택하고, reconcile 은 idempotent 라 재생·중복에 안전하다.
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        handleCommand(userInfo)
+    }
+
+    /// 폰이 방송한 권위 워크아웃 레벨·속도/케이던스 중계 정책에 세션을 정합한다.
     private func handleCommand(_ message: [String: Any]) {
-        guard let active = message["workoutActive"] as? Bool else { return }
-        let token = (message["wToken"] as? Double) ?? 0
         DispatchQueue.main.async {
-            guard token > self.workoutToken else { return }   // 오래된/중복 방송 무시
-            self.workoutToken = token
-            self.reconcile(active: active)
+            if let active = message["workoutActive"] as? Bool {
+                let token = (message["wToken"] as? Double) ?? 0
+                if token > self.workoutToken {
+                    self.workoutToken = token
+                    self.reconcile(active: active)
+                }
+            }
+            if let relay = message["speedCadenceRelay"] as? Bool {
+                let rToken = (message["relayToken"] as? Double) ?? 0
+                if rToken > self.relayToken {
+                    self.relayToken = rToken
+                    self.speedCadenceRelayEnabled = relay
+                    self.applyRelayPolicy()
+                }
+            }
+            if message["releaseSensors"] as? Bool == true {
+                self.speedCadenceRelayEnabled = false
+                self.applyRelayPolicy()
+            }
+        }
+    }
+
+    /// 폰 BLE 모드: 주행 중이 아니면 워치 센서 세션 종료.
+    private func applyRelayPolicy() {
+        let ctx = WCSession.default.receivedApplicationContext
+        let phoneRideActive = (ctx["workoutActive"] as? Bool)
+            ?? (ctx["workoutActive"] as? NSNumber)?.boolValue
+            ?? false
+        if !speedCadenceRelayEnabled, !phoneRideActive, isRunning || isStarting {
+            stopWorkout()
         }
     }
 
@@ -497,16 +559,30 @@ extension WorkoutManager: WCSessionDelegate {
         }
     }
 
-    /// 워치 버튼(CONNECT/DISCONNECT) → 폰에 시작/정지 '요청'만 보낸다.
-    /// 실제 시작/정지는 폰이 ride 를 켜고/끈 뒤 방송하는 권위 레벨로 이뤄진다.
+    /// 워치 CONNECT/DISCONNECT — 폰 라이딩 시작/종료와 분리.
+    /// CONNECT: 워치에서만 HKWorkoutSession(심박·센서) 시작. DISCONNECT: 폰 주행 중이면 종료 요청, 아니면 워치 세션만 종료.
     func requestWorkout(_ start: Bool) {
         let s = WCSession.default
         guard s.activationState == .activated else { return }
-        let payload: [String: Any] = ["workoutRequest": start]
-        if s.isReachable {
-            s.sendMessage(payload, replyHandler: nil, errorHandler: nil)
-        } else {
-            s.transferUserInfo(payload)   // 폰이 백그라운드/미도달이면 다음 활성화 시 전달
+
+        if start {
+            if !isRunning, !isStarting { startWorkout() }
+            return
+        }
+
+        let ctx = s.receivedApplicationContext
+        let phoneRideActive = (ctx["workoutActive"] as? Bool)
+            ?? (ctx["workoutActive"] as? NSNumber)?.boolValue
+            ?? false
+        if phoneRideActive {
+            let payload: [String: Any] = ["workoutRequest": false]
+            if s.isReachable {
+                s.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+            } else {
+                s.transferUserInfo(payload)
+            }
+        } else if isRunning || isStarting {
+            stopWorkout()
         }
     }
 }

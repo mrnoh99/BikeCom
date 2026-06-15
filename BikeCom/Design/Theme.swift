@@ -18,7 +18,7 @@ enum Theme {
     static let gray = Color(white: 0.30)                         // Done 버튼
 
     /// 큰 숫자 폰트 (대시보드 메트릭 값)
-    static func metricFont(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .semibold, design: .rounded)
+    static func metricFont(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
     }
 }

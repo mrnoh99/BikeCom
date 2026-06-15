@@ -26,6 +26,7 @@ struct RideRecord: Identifiable, Codable {
     var maxHeartRate: Int?
     var avgHeartRate: Int?
     var maxCadence: Int?
+    var avgCadence: Int?
     /// 경로 좌표 + 지점별 고도·시각·속도·심박(GPX 확장 태그용).
     /// 메모리 절약을 위해 목록/통계에서는 비워 두고(요약), 상세·내보내기 때만 디스크에서 로드한다.
     var track: [Coordinate]
@@ -56,7 +57,7 @@ struct RideRecord: Identifiable, Codable {
          location: String? = nil,
          startedAt: Date, duration: TimeInterval,
          totalElapsed: TimeInterval, distanceMeters: Double, averageSpeedMps: Double,
-         maxSpeedMps: Double, maxHeartRate: Int?, avgHeartRate: Int?, maxCadence: Int?,
+         maxSpeedMps: Double, maxHeartRate: Int?, avgHeartRate: Int?, maxCadence: Int?, avgCadence: Int? = nil,
          track: [Coordinate], includeInMap: Bool = false, mapName: String? = nil,
          isCourseOnly: Bool = false) {
         self.id = id
@@ -73,6 +74,7 @@ struct RideRecord: Identifiable, Codable {
         self.maxHeartRate = maxHeartRate
         self.avgHeartRate = avgHeartRate
         self.maxCadence = maxCadence
+        self.avgCadence = avgCadence
         self.track = track
         self.trackCount = track.count
         self.startCoord = track.first
@@ -85,7 +87,7 @@ struct RideRecord: Identifiable, Codable {
     enum CodingKeys: String, CodingKey {
         case id, name, bikeName, source, location, startedAt, duration, totalElapsed,
              distanceMeters, averageSpeedMps, maxSpeedMps, maxHeartRate, avgHeartRate,
-             maxCadence, track, trackCount, startCoord, endCoord, includeInMap, mapName,
+             maxCadence, avgCadence, track, trackCount, startCoord, endCoord, includeInMap, mapName,
              isCourseOnly
     }
 
@@ -106,6 +108,7 @@ struct RideRecord: Identifiable, Codable {
         maxHeartRate = try c.decodeIfPresent(Int.self, forKey: .maxHeartRate)
         avgHeartRate = try c.decodeIfPresent(Int.self, forKey: .avgHeartRate)
         maxCadence = try c.decodeIfPresent(Int.self, forKey: .maxCadence)
+        avgCadence = try c.decodeIfPresent(Int.self, forKey: .avgCadence)
         let t = try c.decodeIfPresent([Coordinate].self, forKey: .track) ?? []
         track = t
         trackCount = try c.decodeIfPresent(Int.self, forKey: .trackCount) ?? t.count
@@ -241,14 +244,24 @@ final class RideStore: ObservableObject {
         guard !record.track.isEmpty else { return }
         let url = trackFileURL(record.id)
         let track = record.track
-        ioQueue.async {
-            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                     withIntermediateDirectories: true)
-            guard let data = try? JSONEncoder().encode(track) else { return }
-            let coordinator = NSFileCoordinator(); var err: NSError?
-            coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
-                try? data.write(to: u, options: .atomic)
-            }
+        ioQueue.async { [weak self] in
+            self?.writeTrackData(track, to: url)
+        }
+    }
+
+    /// ioQueue 에서 동기 저장(백업 복원 진행률용).
+    private func writeTrackFileSync(_ record: RideRecord) {
+        guard !record.track.isEmpty else { return }
+        writeTrackData(record.track, to: trackFileURL(record.id))
+    }
+
+    private func writeTrackData(_ track: [RideRecord.Coordinate], to url: URL) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        guard let data = try? JSONEncoder().encode(track) else { return }
+        let coordinator = NSFileCoordinator(); var err: NSError?
+        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
+            try? data.write(to: u, options: .atomic)
         }
     }
 
@@ -265,16 +278,24 @@ final class RideStore: ObservableObject {
     /// replaceAll 등으로 사라진 기록의 트랙 파일을 정리한다(고아 파일·iCloud 용량 누수 방지).
     private func pruneTrackFiles(keeping ids: Set<UUID>) {
         let dir = tracksDir
-        ioQueue.async {
-            let fm = FileManager.default
-            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
-            for f in files where f.pathExtension == "json" {
-                guard let id = UUID(uuidString: f.deletingPathExtension().lastPathComponent),
-                      !ids.contains(id) else { continue }
-                let c = NSFileCoordinator(); var e: NSError?
-                c.coordinate(writingItemAt: f, options: .forDeleting, error: &e) { u in
-                    try? fm.removeItem(at: u)
-                }
+        ioQueue.async { [weak self] in
+            self?.pruneTrackFilesSync(in: dir, keeping: ids)
+        }
+    }
+
+    private func pruneTrackFilesSync(keeping ids: Set<UUID>) {
+        pruneTrackFilesSync(in: tracksDir, keeping: ids)
+    }
+
+    private func pruneTrackFilesSync(in dir: URL, keeping ids: Set<UUID>) {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        for f in files where f.pathExtension == "json" {
+            guard let id = UUID(uuidString: f.deletingPathExtension().lastPathComponent),
+                  !ids.contains(id) else { continue }
+            let c = NSFileCoordinator(); var e: NSError?
+            c.coordinate(writingItemAt: f, options: .forDeleting, error: &e) { u in
+                try? fm.removeItem(at: u)
             }
         }
     }
@@ -484,6 +505,35 @@ final class RideStore: ObservableObject {
         }
     }
 
+    /// 현재 전체 기록(트랙 포함)을 zip 백업 파일로 만든다(공유·복원용).
+    func makeBackupZip(completion: @escaping (URL?) -> Void) {
+        makeBackupData { [weak self] data in
+            guard let self, let data else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            self.ioQueue.async {
+                let fm = FileManager.default
+                let df = DateFormatter(); df.dateFormat = "yyyyMMdd-HHmm"
+                let stamp = df.string(from: Date())
+                let folder = fm.temporaryDirectory.appendingPathComponent("BikeCom-Backup-\(stamp)", isDirectory: true)
+                try? fm.removeItem(at: folder)
+                try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                let jsonURL = folder.appendingPathComponent("BikeCom-Backup.json")
+                let zipURL = fm.temporaryDirectory.appendingPathComponent("BikeCom-Backup-\(stamp).zip")
+                do {
+                    try data.write(to: jsonURL, options: .atomic)
+                    try BackupZip.createArchive(jsonURL: jsonURL, zipURL: zipURL)
+                    try? fm.removeItem(at: folder)
+                    DispatchQueue.main.async { completion(zipURL) }
+                } catch {
+                    try? fm.removeItem(at: folder)
+                    DispatchQueue.main.async { completion(nil) }
+                }
+            }
+        }
+    }
+
     /// 백업 파일에서 기록을 읽는다(iCloud 우선, 없으면 로컬). 백그라운드에서 호출.
     private static func loadBackupRecords(localURL: URL, cloudURL: URL?) -> [RideRecord]? {
         for url in [cloudURL, localURL].compactMap({ $0 }) {
@@ -499,22 +549,83 @@ final class RideStore: ObservableObject {
         return nil
     }
 
-    /// 사용자가 고른 백업 파일을 복원(병합)한다. 백업 봉투·rides.json 둘 다 허용. 복원 후 총 건수 반환.
-    @discardableResult
-    func restoreBackup(from url: URL) -> Int {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else { return 0 }
-        var incoming: [RideRecord] = []
-        if let b = try? JSONDecoder().decode(Backup.self, from: data) {
-            incoming = b.records
-        } else if let arr = try? JSONDecoder().decode([RideRecord].self, from: data) {
-            incoming = arr
+    /// 사용자가 고른 백업 파일(JSON 또는 zip)을 병합 복원한다.
+    /// progress: 파일명·건수·트랙 저장 진행을 메인 큐로 보고한다.
+    func restoreBackup(from url: URL,
+                       existing: [RideRecord],
+                       progress: @escaping (String) -> Void,
+                       completion: @escaping (Int) -> Void) {
+        let fileName = url.lastPathComponent
+        ioQueue.async { [weak self] in
+            guard let self else {
+                DispatchQueue.main.async { completion(0) }
+                return
+            }
+            DispatchQueue.main.async { progress("백업 읽는 중: \(fileName)") }
+
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+            var extractedDir: URL?
+            defer {
+                if let extractedDir { try? FileManager.default.removeItem(at: extractedDir) }
+            }
+
+            let incoming: [RideRecord]
+            if url.pathExtension.lowercased() == "zip" {
+                DispatchQueue.main.async { progress("zip 압축 해제 중: \(fileName)") }
+                do {
+                    extractedDir = try BackupZip.extract(url)
+                } catch {
+                    DispatchQueue.main.async { completion(0) }
+                    return
+                }
+                DispatchQueue.main.async { progress("백업 분석 중: \(fileName)") }
+                guard let records = BackupZip.loadRecords(from: extractedDir!), !records.isEmpty else {
+                    DispatchQueue.main.async { completion(0) }
+                    return
+                }
+                incoming = records
+            } else {
+                guard let data = try? Data(contentsOf: url) else {
+                    DispatchQueue.main.async { completion(0) }
+                    return
+                }
+                DispatchQueue.main.async { progress("백업 분석 중: \(fileName)") }
+                if let b = try? JSONDecoder().decode(Backup.self, from: data), !b.records.isEmpty {
+                    incoming = b.records
+                } else if let arr = try? JSONDecoder().decode([RideRecord].self, from: data), !arr.isEmpty {
+                    incoming = arr
+                } else {
+                    DispatchQueue.main.async { completion(0) }
+                    return
+                }
+            }
+
+            let merged = RideRecordMerge.merge(existing: existing, incoming: incoming, incomingWins: false)
+            let total = merged.count
+            DispatchQueue.main.async {
+                progress("복원 중: \(fileName) · 0/\(total)")
+            }
+
+            for (index, record) in merged.enumerated() {
+                self.writeTrackFileSync(record)
+                let done = index + 1
+                if done == total || done % 3 == 0 {
+                    DispatchQueue.main.async {
+                        progress("복원 중: \(fileName) · \(done)/\(total)")
+                    }
+                }
+            }
+
+            self.pruneTrackFilesSync(keeping: Set(merged.map(\.id)))
+            DispatchQueue.main.async {
+                progress("저장 중: \(fileName)")
+                self.records = merged.map { $0.summary() }
+                self.save()
+                completion(total)
+            }
         }
-        guard !incoming.isEmpty else { return 0 }
-        let merged = RideRecordMerge.merge(existing: records, incoming: incoming, incomingWins: false)
-        replaceAll(merged)
-        return merged.count
     }
 
     // MARK: iCloud 동기화

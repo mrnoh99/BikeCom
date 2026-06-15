@@ -50,20 +50,27 @@ struct MetricCell: View {
     var valueSuffixSmall: Bool = true
     var fixedValueFontSize: CGFloat? = nil
     var sensorStatus: SensorLinkStatus? = nil
+    /// 행 기본색(흰/금) 대신 지표별 강조색을 쓸 때(예: HR=red).
+    var valueColorOverride: Color? = nil
+    /// Distance·Speed·HR 등 주요 지표 값 굵기.
+    var valueFontWeight: Font.Weight = .semibold
 
-    private var valueColor: Color { rowIndex.isMultiple(of: 2) ? Theme.value : Theme.gold }
+    private var valueColor: Color {
+        valueColorOverride ?? (rowIndex.isMultiple(of: 2) ? Theme.value : Theme.gold)
+    }
 
     /// Month 열 기준으로 같은 행에 쓸 값 글자 크기를 계산한다.
     static func fittedValueFontSize(
         value: String,
         maxWidth: CGFloat,
-        maxHeight: CGFloat
+        maxHeight: CGFloat,
+        weight: UIFont.Weight = .semibold
     ) -> CGFloat {
         var lo: CGFloat = 8
         var hi = maxHeight
         while hi - lo > 0.5 {
             let mid = (lo + hi) / 2
-            if fits(value: value, fontSize: mid, maxWidth: maxWidth, maxHeight: maxHeight) {
+            if fits(value: value, fontSize: mid, maxWidth: maxWidth, maxHeight: maxHeight, weight: weight) {
                 lo = mid
             } else {
                 hi = mid
@@ -76,16 +83,17 @@ struct MetricCell: View {
         value: String,
         fontSize: CGFloat,
         maxWidth: CGFloat,
-        maxHeight: CGFloat
+        maxHeight: CGFloat,
+        weight: UIFont.Weight = .semibold
     ) -> Bool {
-        let valueFont = metricUIFont(fontSize)
+        let valueFont = metricUIFont(fontSize, weight: weight)
         let valueWidth = (value as NSString).size(withAttributes: [.font: valueFont]).width
         let lineHeight = valueFont.lineHeight
         return valueWidth <= maxWidth && lineHeight <= maxHeight
     }
 
-    private static func metricUIFont(_ size: CGFloat) -> UIFont {
-        .systemFont(ofSize: size, weight: .semibold)
+    private static func metricUIFont(_ size: CGFloat, weight: UIFont.Weight = .semibold) -> UIFont {
+        .systemFont(ofSize: size, weight: weight)
     }
 
     var body: some View {
@@ -124,12 +132,12 @@ struct MetricCell: View {
         let isDash = value == MetricDash.symbol
         return HStack(alignment: .lastTextBaseline, spacing: 1) {
             Text(value)
-                .font(Theme.metricFont(isDash ? fontSize * 0.55 : fontSize))
+                .font(Theme.metricFont(isDash ? fontSize * 0.55 : fontSize, weight: valueFontWeight))
             if let valueSuffix {
                 Text(valueSuffix)
                     .font(valueSuffixSmall
-                          ? .system(size: max(fontSize * 0.38, layout.unitFont), weight: .semibold, design: .rounded)
-                          : Theme.metricFont(fontSize))
+                          ? .system(size: max(fontSize * 0.38, layout.unitFont), weight: valueFontWeight, design: .rounded)
+                          : Theme.metricFont(fontSize, weight: valueFontWeight))
                     .foregroundColor(valueColor)
             }
         }

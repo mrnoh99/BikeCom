@@ -23,7 +23,10 @@ enum RideSort: String, CaseIterable, Identifiable {
 }
 
 private let routeDateFormatter: DateFormatter = {
-    let f = DateFormatter(); f.dateFormat = "yyyy.MM.dd HH:mm"; return f
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "ko_KR")
+    f.dateFormat = "yyyy.MM.dd (E) HH:mm"
+    return f
 }()
 
 /// 목록 행(이름·거리·시간·날짜).
@@ -106,6 +109,10 @@ struct RoutesView: View {
         return types
     }
 
+    private var backupImportTypes: [UTType] {
+        [.zip, .json, .archive]
+    }
+
     var body: some View {
         Group {
             if session.store.records.isEmpty {
@@ -141,14 +148,10 @@ struct RoutesView: View {
         // 백업 importer 는 별도 뷰 노드(background)에 붙여 분리한다.
         .background(
             Color.clear
-                .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.json],
+                .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: backupImportTypes,
                               allowsMultipleSelection: false) { result in
                     if case .success(let urls) = result, let url = urls.first {
-                        let total = session.store.restoreBackup(from: url)
-                        session.importStatus = total > 0
-                            ? "백업 복원 완료 · 현재 \(total)건"
-                            : "복원 실패 (백업 파일 형식 확인)"
-                        session.refreshDataStats()
+                        session.restoreBackup(from: url)
                     }
                 }
         )
@@ -174,33 +177,40 @@ struct RoutesView: View {
     }
 
     // 데이터 가져오기/정리 메뉴 (라이딩 기록 첫 페이지)
+    /// SwiftUI Menu 는 닫히는 동안 @Published 갱신과 겹치면 액션이 씹힐 수 있다.
+    private func deferMenuAction(_ action: @escaping () -> Void) {
+        DispatchQueue.main.async { action() }
+    }
+
     private var dataMenu: some View {
         Menu {
-            Button { session.importStatus = nil; showConsolidateConfirm = true } label: {
+            Button { deferMenuAction { showConsolidateConfirm = true } } label: {
                 Label("기록 통합 정리", systemImage: "arrow.triangle.merge")
             }
             Divider()
-            Button { session.importStatus = nil; session.importFromHealth() } label: {
+            Button { deferMenuAction { session.importFromHealth() } } label: {
                 Label("Apple Health에서 가져오기", systemImage: "heart.text.square")
             }
-            Button { session.importStatus = nil; showImporter = true } label: {
+            .disabled(session.isImportingFromHealth)
+            Button { deferMenuAction { showImporter = true } } label: {
                 Label("GPX / CSV 파일 가져오기", systemImage: "square.and.arrow.down")
             }
             Divider()
-            Button { exportAll() } label: {
+            Button { deferMenuAction { exportAll() } } label: {
                 Label(exporting ? "내보내는 중…" : "전체 데이터 내보내기 (GPX zip)",
                       systemImage: "square.and.arrow.up.on.square")
             }
             .disabled(exporting || session.store.records.isEmpty)
             Divider()
             Section("백업 (재설치 대비)") {
-                Button { backupNow() } label: {
-                    Label("백업 파일 내보내기", systemImage: "arrow.up.doc")
+                Button { deferMenuAction { backupNow() } } label: {
+                    Label("백업 zip 내보내기", systemImage: "arrow.up.doc")
                 }
                 .disabled(session.store.records.isEmpty)
-                Button { session.importStatus = nil; showBackupImporter = true } label: {
-                    Label("백업에서 복원", systemImage: "arrow.down.doc")
+                Button { deferMenuAction { showBackupImporter = true } } label: {
+                    Label("백업 zip에서 복원", systemImage: "arrow.down.doc")
                 }
+                .disabled(session.isRestoringFromBackup)
                 if lastBackupAt > 0 {
                     Label("마지막 자동 백업: \(backupTimeText)", systemImage: "checkmark.icloud")
                 }
@@ -214,25 +224,15 @@ struct RoutesView: View {
         routeDateFormatter.string(from: Date(timeIntervalSince1970: lastBackupAt))
     }
 
-    // 현재 전체 기록을 백업 JSON 파일로 만들어 공유 시트로 내보낸다(재설치 전 안전 보관용).
+    // 현재 전체 기록을 BikeCom-Backup.json + zip 으로 만들어 공유 시트로 내보낸다.
     private func backupNow() {
-        session.importStatus = "백업 파일 만드는 중…(트랙 포함)"
-        // 트랙까지 포함한 전체본을 백그라운드에서 만든 뒤 공유 시트로 내보낸다.
-        session.store.makeBackupData { data in
-            guard let data else {
+        session.importStatus = "백업 zip 만드는 중…(트랙 포함)"
+        session.store.makeBackupZip { url in
+            guard let url else {
                 session.importStatus = "백업 생성 실패"; return
             }
-            let stamp = DateFormatter()
-            stamp.dateFormat = "yyyyMMdd-HHmm"
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("BikeCom-Backup-\(stamp.string(from: Date())).json")
-            do {
-                try data.write(to: url, options: .atomic)
-                session.importStatus = "백업 파일 준비됨 · 공유 시트에서 저장/전송 (\(session.store.records.count)건)"
-                exportFile = ExportFile(url: url)
-            } catch {
-                session.importStatus = "백업 저장 실패"
-            }
+            session.importStatus = "백업 zip 준비됨 · 공유 시트에서 저장 (\(session.store.records.count)건)"
+            exportFile = ExportFile(url: url)
         }
     }
 
@@ -255,11 +255,20 @@ struct RoutesView: View {
 
     @ViewBuilder private var statusBanner: some View {
         if let status = session.importStatus {
-            Text(status)
-                .font(.caption).foregroundColor(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal).padding(.vertical, 6)
-                .background(.ultraThinMaterial)
+            HStack(spacing: 8) {
+                if session.isImportingFromHealth || session.isRestoringFromBackup {
+                    ProgressView().controlSize(.small)
+                }
+                Text(status)
+                    .font(.caption).foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button { session.importStatus = nil } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal).padding(.vertical, 6)
+            .background(.ultraThinMaterial)
         }
     }
 
@@ -268,6 +277,15 @@ struct RoutesView: View {
             Text("아직 저장된 라이딩이 없습니다.\nStopwatch 에서 Start 후 Done 을 누르면 기록됩니다.")
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            Section("데이터 가져오기") {
+                Button { session.importFromHealth() } label: {
+                    Label("Apple Health에서 가져오기", systemImage: "heart.text.square")
+                }
+                .disabled(session.isImportingFromHealth)
+                Button { showImporter = true } label: {
+                    Label("GPX / CSV 파일 가져오기", systemImage: "square.and.arrow.down")
+                }
+            }
         }
     }
 
@@ -602,7 +620,7 @@ struct RideDetailView: View {
                     stat("최고 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.maxSpeedMps), unit.speedLabel), Theme.blue)
                     stat("최대 심박", record.maxHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
                     stat("평균 심박", record.avgHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
-                    stat("최대 케이던스", record.maxCadence.map { "\($0) rpm" } ?? "–", Theme.value)
+                    stat("평균 케이던스", record.avgCadence.map { "\($0) rpm" } ?? "–", Theme.value)
                     stat("총 경과", formatDuration(record.totalElapsed), Theme.value)
                 }
                 .padding(.horizontal)

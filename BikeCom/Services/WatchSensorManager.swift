@@ -30,6 +30,8 @@ final class WatchSensorManager: NSObject, ObservableObject {
     var isRideActive: () -> Bool = { false }
     /// 권위 상태 토큰(타임스탬프). 워치는 더 새 토큰만 채택한다(재시작·재생 안전).
     private var workoutToken: Double = 0
+    /// 라이딩 1회당 workoutStarted 는 한 번만 UI 에 반영(applicationContext 재전달 방지).
+    private var workoutStartedAcknowledged = false
 
     private let healthStore = HKHealthStore()
     private let sensorFreshness: TimeInterval = 5
@@ -38,6 +40,10 @@ final class WatchSensorManager: NSObject, ObservableObject {
     private var lastHeartRateAt: Date?
     private var lastAnyDataAt: Date?
     private var freshnessTimer: AnyCancellable?
+    /// false 이면 워치 속도·케이던스 중계 비활성(폰 BLE 모드). 심박은 유지.
+    private(set) var speedCadenceRelayActive = true
+    private var phoneWorkoutActive = false
+    private var relayToken: Double = 0
 
     override init() {
         super.init()
@@ -82,18 +88,51 @@ final class WatchSensorManager: NSObject, ObservableObject {
         }
     }
 
-    func startWatchWorkout() {
-        didReceiveWatchDataThisRide = false
-        heartRateBPM = nil
+    /// 워치 속도·케이던스 중계 활성/중단. 중단 시 워치 센서 세션 종료 요청(폰 주행 중이면 HR 세션 유지).
+    func setSpeedCadenceRelayActive(_ active: Bool) {
+        guard speedCadenceRelayActive != active else { return }
+        speedCadenceRelayActive = active
+        if !active { clearWatchSpeedCadence() }
+        pushWatchContext()
+        if !active { requestWatchReleaseSensors() }
+    }
+
+    /// 워치에 센서 세션 즉시 종료 요청 — CSC 가 워치에 붙어 있으면 폰 BLE 가 선점할 수 있게 한다.
+    private func requestWatchReleaseSensors() {
+        let s = WCSession.default
+        guard s.activationState == .activated else { return }
+        let payload: [String: Any] = ["releaseSensors": true, "relayToken": relayToken]
+        if s.isReachable {
+            s.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        }
+        s.transferUserInfo(payload)
+    }
+
+    private func clearWatchSpeedCadence() {
         watchSpeedMps = nil
         watchCadenceRPM = nil
         lastSpeedSensorAt = nil
         lastCadenceSensorAt = nil
-        lastHeartRateAt = nil
-        lastAnyDataAt = nil
         speedSensorConnected = false
         cadenceSensorConnected = false
-        heartRateConnected = false
+    }
+
+    func startWatchWorkout() {
+        didReceiveWatchDataThisRide = false
+        workoutStartedAcknowledged = false
+        let sensorsLive = heartRateConnected || speedSensorConnected || cadenceSensorConnected
+        if !sensorsLive {
+            heartRateBPM = nil
+            watchSpeedMps = nil
+            watchCadenceRPM = nil
+            lastSpeedSensorAt = nil
+            lastCadenceSensorAt = nil
+            lastHeartRateAt = nil
+            lastAnyDataAt = nil
+            speedSensorConnected = false
+            cadenceSensorConnected = false
+            heartRateConnected = false
+        }
         lastError = nil
 
         guard HKHealthStore.isHealthDataAvailable() else {
@@ -114,15 +153,27 @@ final class WatchSensorManager: NSObject, ObservableObject {
     /// 폰의 권위 워크아웃 상태를 워치로 방송한다.
     /// applicationContext(영구)로 항상 저장하고, reachable 이면 sendMessage 로 즉시도 보낸다.
     /// 워치는 더 새 토큰만 채택해 정합하므로 재생·중복에 안전하다.
-    private func broadcastWorkoutActive(_ active: Bool) {
+    /// 폰 → 워치 applicationContext (workoutActive + speedCadenceRelay).
+    private func pushWatchContext() {
         let s = WCSession.default
         guard s.activationState == .activated else { return }
-        workoutToken = Date().timeIntervalSince1970
-        let payload: [String: Any] = ["workoutActive": active, "wToken": workoutToken]
+        relayToken = Date().timeIntervalSince1970
+        let payload: [String: Any] = [
+            "workoutActive": phoneWorkoutActive,
+            "wToken": workoutToken,
+            "speedCadenceRelay": speedCadenceRelayActive,
+            "relayToken": relayToken,
+        ]
         try? s.updateApplicationContext(payload)
         if s.isReachable {
             s.sendMessage(payload, replyHandler: nil, errorHandler: nil)
         }
+    }
+
+    private func broadcastWorkoutActive(_ active: Bool) {
+        phoneWorkoutActive = active
+        workoutToken = Date().timeIntervalSince1970
+        pushWatchContext()
     }
 
     private func launchWatchApp(config: HKWorkoutConfiguration, attempt: Int) {
@@ -160,27 +211,21 @@ final class WatchSensorManager: NSObject, ObservableObject {
     }
 
     func stopWatchWorkout() {
-        broadcastWorkoutActive(false)       // 권위 상태 = 비활성 (워치가 따라 세션 종료)
+        broadcastWorkoutActive(false)
+        workoutStartedAcknowledged = false
         heartRateBPM = nil
-        watchSpeedMps = nil
-        watchCadenceRPM = nil
-        lastSpeedSensorAt = nil
-        lastCadenceSensorAt = nil
+        clearWatchSpeedCadence()
         lastHeartRateAt = nil
         lastAnyDataAt = nil
-        speedSensorConnected = false
-        cadenceSensorConnected = false
         heartRateConnected = false
         statusMessage = "대기"
     }
 
     private func refreshSensorConnectionFlags() {
         let now = Date()
-        // 값이 실제로 바뀔 때만 대입한다. (@Published 는 같은 값이어도 대입하면 objectWillChange 를
-        // 발행하므로, 0.5초마다 무조건 대입하면 상위 session 이 계속 갱신돼 화면이 깜빡인다.)
-        let speed = isFresh(lastSpeedSensorAt, now: now)
+        let speed = speedCadenceRelayActive && isFresh(lastSpeedSensorAt, now: now)
         if speed != speedSensorConnected { speedSensorConnected = speed }
-        let cadence = isFresh(lastCadenceSensorAt, now: now)
+        let cadence = speedCadenceRelayActive && isFresh(lastCadenceSensorAt, now: now)
         if cadence != cadenceSensorConnected { cadenceSensorConnected = cadence }
         let hr = isFresh(lastHeartRateAt, now: now)
         if hr != heartRateConnected { heartRateConnected = hr }
@@ -188,10 +233,9 @@ final class WatchSensorManager: NSObject, ObservableObject {
         let receiving = lastAnyDataAt.map { now.timeIntervalSince($0) <= sensorFreshness } ?? false
         if receiving {
             let msg = watchReachable ? "워치 데이터 수신 중" : "워치 데이터 수신(백그라운드)"
-            if msg != statusMessage { statusMessage = msg }
+            if lastError == nil, msg != statusMessage { statusMessage = msg }
         } else if lastError == nil, statusMessage.hasPrefix("워치 데이터 수신") {
-            // 워치가 DISCONNECT 되어 데이터가 끊기면 '수신 중' 표시를 해제한다(멈춤 방지).
-            statusMessage = "대기"
+            statusMessage = workoutStartedAcknowledged ? "워치 워크아웃 시작됨" : "대기"
         }
     }
 
@@ -201,8 +245,8 @@ final class WatchSensorManager: NSObject, ObservableObject {
     }
 
     private func handle(_ message: [String: Any]) {
-        // 워치 버튼(CONNECT/DISCONNECT) 요청 → RideSession 으로 전달(폰이 ride 를 시작/종료).
-        if let req = message["workoutRequest"] as? Bool {
+        // 워치 DISCONNECT(폰 주행 중)만 종료 요청. CONNECT 는 워치 로컬 센서 세션.
+        if let req = message["workoutRequest"] as? Bool, !req {
             DispatchQueue.main.async { self.onWatchRequest?(req) }
         }
         if let err = message["workoutError"] as? String {
@@ -212,7 +256,11 @@ final class WatchSensorManager: NSObject, ObservableObject {
             }
         }
         if WCPayload.bool(message, "workoutStarted") == true {
-            DispatchQueue.main.async { self.statusMessage = "워치 워크아웃 시작됨" }
+            DispatchQueue.main.async {
+                guard !self.workoutStartedAcknowledged else { return }
+                self.workoutStartedAcknowledged = true
+                self.statusMessage = "워치 워크아웃 시작됨"
+            }
         }
         if let v = WCPayload.double(message, "spo2") {
             DispatchQueue.main.async {
@@ -237,6 +285,7 @@ final class WatchSensorManager: NSObject, ObservableObject {
                 self.heartRateConnected = true
             }
             if message["speedMps"] != nil {
+                guard self.speedCadenceRelayActive else { return }
                 self.lastSpeedSensorAt = Date()
                 if let v = WCPayload.double(message, "speedMps"), v >= 0 {
                     self.watchSpeedMps = v
@@ -244,6 +293,7 @@ final class WatchSensorManager: NSObject, ObservableObject {
                 self.speedSensorConnected = true
             }
             if message["cadence"] != nil {
+                guard self.speedCadenceRelayActive else { return }
                 self.lastCadenceSensorAt = Date()
                 if let rpm = WCPayload.int(message, "cadence"), rpm >= 0 {
                     self.watchCadenceRPM = rpm
@@ -266,8 +316,8 @@ extension WatchSensorManager: WCSessionDelegate {
                 self.statusMessage = session.isPaired ? "Watch 연결됨" : "Watch 미페어링"
                 let ctx = session.receivedApplicationContext
                 if !ctx.isEmpty { self.handle(ctx) }
-                // 새로 활성화된 워치가 현재 권위 상태를 따라오도록 재방송.
-                self.broadcastWorkoutActive(self.isRideActive())
+                self.phoneWorkoutActive = self.isRideActive()
+                self.pushWatchContext()
             }
         }
     }

@@ -32,11 +32,15 @@ struct MapTabView: View {
                 // 상단 요약 바 — 라이브 값이 @Published 가 아니므로 TimelineView 로 1초마다 갱신.
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     HStack(spacing: 20) {
-                        summary("거리", "\(String(format: "%.2f", session.displayDistance)) \(session.unit.distanceLabel)")
-                        summary("속도", "\(String(format: "%.1f", session.displaySpeed)) \(session.unit.speedLabel)")
-                        summary("시간", formatDuration(session.rideSeconds))
+                        summary("거리",
+                                number: String(format: "%.2f", session.displayDistance),
+                                unit: session.unit.distanceLabel)
+                        summary("속도",
+                                number: String(format: "%.1f", session.displaySpeed),
+                                unit: session.unit.speedLabel)
+                        summary("시간", number: formatDuration(session.movingSeconds))
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
                 }
 
@@ -96,10 +100,19 @@ struct MapTabView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func summary(_ label: String, _ value: String) -> some View {
+    private func summary(_ label: String, number: String, unit: String? = nil) -> some View {
         VStack(spacing: 2) {
             Text(label).font(.caption2).foregroundColor(.secondary)
-            Text(value).font(.system(size: 15, weight: .bold))
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(number)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                if let unit {
+                    Text(unit)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+            }
         }
     }
 }

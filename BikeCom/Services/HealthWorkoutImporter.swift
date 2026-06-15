@@ -13,6 +13,22 @@ import CoreLocation
 final class HealthWorkoutImporter {
     private let healthStore = HKHealthStore()
 
+    /// Health 가져오기 전 읽기 권한을 요청한다(거부 시 쿼리가 조용히 실패하는 것 방지).
+    func requestReadAuthorization(completion: @escaping (Bool, Error?) -> Void) {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            DispatchQueue.main.async { completion(false, nil) }
+            return
+        }
+        var read: Set<HKObjectType> = [HKObjectType.workoutType()]
+        for id in [HKQuantityTypeIdentifier.heartRate, .distanceCycling, .cyclingCadence] {
+            if let t = HKQuantityType.quantityType(forIdentifier: id) { read.insert(t) }
+        }
+        read.insert(HKSeriesType.workoutRoute())
+        healthStore.requestAuthorization(toShare: [], read: read) { ok, error in
+            DispatchQueue.main.async { completion(ok, error) }
+        }
+    }
+
     /// 동시에 처리할 경로 조회 수(HealthKit 폭주 방지).
     private let maxConcurrent = 4
     /// 워크아웃 1건의 경로 읽기 제한 시간. 초과 시 경로 없이 요약만 사용(무한 대기 방지).
@@ -92,6 +108,7 @@ final class HealthWorkoutImporter {
             maxHeartRate: maxHR,
             avgHeartRate: avgHR,
             maxCadence: maxCad,
+            avgCadence: maxCad,
             track: [])
     }
 

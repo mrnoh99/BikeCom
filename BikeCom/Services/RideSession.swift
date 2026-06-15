@@ -63,8 +63,12 @@ final class RideSession: ObservableObject {
     /// 등반 고도(누적 상승) — 라이브 갱신값이라 @Published 가 아니다(틱 재렌더 방지).
     private(set) var elevationGainMeters: Double = 0
 
-    /// GPX 가져오기 진행/결과 표시.
+    /// GPX/Health 가져오기 진행/결과 표시.
     @Published var importStatus: String?
+    /// Health 가져오기 실행 중(중복 탭·Menu 씹힘 방지).
+    @Published private(set) var isImportingFromHealth = false
+    /// 백업 복원 실행 중(진행 표시·중복 실행 방지).
+    @Published private(set) var isRestoringFromBackup = false
 
     // MARK: 기준 코스(라이브 지도 오버레이 — 주행 중 따라가기)
     /// 현재 라이브 지도에 겹쳐 보여줄 기준 코스(없으면 nil).
@@ -151,6 +155,26 @@ final class RideSession: ObservableObject {
 
     /// Apple 건강의 사이클링 워크아웃을 **겹치지 않는 것만 보충**한다(시드 트랙 데이터가 기본).
     func importFromHealth() {
+        guard !isImportingFromHealth else { return }
+        isImportingFromHealth = true
+        importStatus = "Health 권한 확인 중…"
+        healthImporter.requestReadAuthorization { [weak self] ok, error in
+            guard let self else { return }
+            if let error {
+                self.isImportingFromHealth = false
+                self.importStatus = "Health 권한 오류: \(error.localizedDescription)"
+                return
+            }
+            guard ok else {
+                self.isImportingFromHealth = false
+                self.importStatus = "Health 읽기 권한이 필요합니다. 설정 → 건강 → 데이터 접근 → BikeCom"
+                return
+            }
+            self.runHealthImport()
+        }
+    }
+
+    private func runHealthImport() {
         importStatus = "Health에서 가져오는 중…"
         // 기존 기록(시드 Cyclemeter 등)과 겹치는 워크아웃은 경로 조회 전에 미리 제외(속도 핵심).
         let existing = store.records
@@ -160,13 +184,16 @@ final class RideSession: ObservableObject {
             self?.importStatus = "Health에서 가져오는 중… \(done)/\(total)"
         }, completion: { [weak self] records in
             guard let self else { return }
+            self.isImportingFromHealth = false
             // 주행시간 0 이거나 거리 1.5km 이하인 건강 기록은 제외한다.
             let kept = records.filter { $0.duration > 0 && $0.distanceMeters > 1500 }
             self.store.addMany(kept)
             let dropped = records.count - kept.count
             self.importStatus = dropped > 0
                 ? "Health 보충 완료: \(kept.count)개 추가 (시간 0·1.5km 이하 \(dropped)개 제외)"
-                : "Health 보충 완료: 겹치지 않는 \(kept.count)개 추가"
+                : kept.isEmpty
+                    ? "Health에서 새로 가져올 사이클링 기록이 없습니다"
+                    : "Health 보충 완료: 겹치지 않는 \(kept.count)개 추가"
             self.refreshDataStats()
         })
     }
@@ -373,6 +400,25 @@ final class RideSession: ObservableObject {
         importStatus = "가져오기 취소됨"
     }
 
+    /// 사용자가 고른 백업 JSON 을 병합 복원한다. 파일명·건수 진행을 importStatus 로 표시.
+    func restoreBackup(from url: URL) {
+        guard !isRestoringFromBackup else { return }
+        isRestoringFromBackup = true
+        let fileName = url.lastPathComponent
+        let existing = store.records
+        importStatus = "백업 준비 중: \(fileName)"
+        store.restoreBackup(from: url, existing: existing, progress: { [weak self] status in
+            self?.importStatus = status
+        }, completion: { [weak self] total in
+            guard let self else { return }
+            self.isRestoringFromBackup = false
+            self.importStatus = total > 0
+                ? "백업 복원 완료: \(fileName) · 현재 \(total)건"
+                : "복원 실패: \(fileName) (zip·JSON 형식 확인)"
+            self.refreshDataStats()
+        })
+    }
+
     /// 주행 기록을 지도 코스로 복제한다(원본은 통계 유지, 복사본은 코스 전용·맨 위).
     func addCourseCopy(of record: RideRecord, name: String? = nil) {
         store.loadTrack(for: record) { [weak self] coords in
@@ -385,7 +431,7 @@ final class RideSession: ObservableObject {
                 totalElapsed: record.totalElapsed, distanceMeters: record.distanceMeters,
                 averageSpeedMps: record.averageSpeedMps, maxSpeedMps: record.maxSpeedMps,
                 maxHeartRate: record.maxHeartRate, avgHeartRate: record.avgHeartRate,
-                maxCadence: record.maxCadence, track: coords,
+                maxCadence: record.maxCadence, avgCadence: record.avgCadence, track: coords,
                 includeInMap: true, mapName: courseName, isCourseOnly: true)
             self.store.add(copy)
             self.importStatus = "지도 코스로 추가됨: \(courseName)"
@@ -406,14 +452,23 @@ final class RideSession: ObservableObject {
         }
     }
 
-    /// 속도·케이던스 센서 연결 상태(폰 BLE 직결 또는 워치 중계 중 하나라도 연결).
-    var speedSensorConnected: Bool { ble.speedConnected || watch.speedSensorConnected }
-    var cadenceSensorConnected: Bool { ble.cadenceConnected || watch.cadenceSensorConnected }
+    /// 속도·케이던스 센서 연결 상태 — 현재 sensorMode 기준(폰 BLE / 워치 중계).
+    var speedSensorConnected: Bool {
+        sensorMode == .phone ? ble.speedConnected : watch.speedSensorConnected
+    }
+    /// 속도 센서 없을 때 GPS 속도를 쓰는지(센서 우선, 없으면 GPS).
+    var usesGPSSpeedFallback: Bool { !speedSensorConnected }
+    var cadenceSensorConnected: Bool {
+        sensorMode == .phone ? ble.cadenceConnected : watch.cadenceSensorConnected
+    }
 
     /// 속도·케이던스를 폰(BLE) 또는 워치 중 어디로 받을지 선택. 기본은 폰 직결.
     @Published var sensorMode: SensorMode =
         SensorMode(rawValue: UserDefaults.standard.string(forKey: "bike.sensorMode") ?? "") ?? .phone {
-        didSet { UserDefaults.standard.set(sensorMode.rawValue, forKey: "bike.sensorMode") }
+        didSet {
+            UserDefaults.standard.set(sensorMode.rawValue, forKey: "bike.sensorMode")
+            applySensorMode()
+        }
     }
 
     /// 라이딩 설정을 저장한다(이름·자전거·휠 둘레·코스·자동 일시정지).
@@ -476,6 +531,8 @@ final class RideSession: ObservableObject {
 
     private let movingSpeedThresholdMps = 0.8  // 이 속도 이상이면 "움직이는 중"
     private var lastAltitude: Double?           // 등반 고도 계산용 기준 고도
+    private var phoneBleActivateWork: DispatchWorkItem?
+    private var lastAppliedSensorMode: SensorMode?
 
     init() {
         // 시계 + 라이딩 타이머 (0.5초 간격)
@@ -494,7 +551,10 @@ final class RideSession: ObservableObject {
 
         watch.$watchSpeedMps
             .compactMap { $0 }
-            .sink { [weak self] v in self?.ingestSpeed(v, fromSource: .watch) }
+            .sink { [weak self] v in
+                guard let self, self.sensorMode == .watch else { return }
+                self.ingestSpeed(v, fromSource: .watch)
+            }
             .store(in: &cancellables)
 
         location.$gpsSpeedMetersPerSecond
@@ -510,45 +570,76 @@ final class RideSession: ObservableObject {
             .store(in: &cancellables)
 
         watch.$watchCadenceRPM
-            .sink { [weak self] rpm in self?.ingestCadence(rpm, fromSource: .watch) }
+            .sink { [weak self] rpm in
+                guard let self, self.sensorMode == .watch else { return }
+                self.ingestCadence(rpm, fromSource: .watch)
+            }
             .store(in: &cancellables)
 
         watch.$heartRateBPM
             .sink { [weak self] bpm in self?.ingestHeartRate(bpm) }
             .store(in: &cancellables)
 
-        ble.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-
-        // 중첩 ObservableObject 변경을 상위로 전달해 관련 뷰가 갱신되게 한다.
+        // store 만 상위로 전달(Routes·More 목록 갱신). watch/ble/health 는 각 화면에서
+        // @ObservedObject 또는 TimelineView 로 국소 갱신 — 전체 List 재렌더·스크롤 끊김 방지.
         store.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-        watch.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-        health.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
         location.requestAuthorization()
         watch.requestAuthorization()
 
-        // 워치 CONNECT/DISCONNECT 는 폰에 '요청'만 보낸다. 폰 ride 상태가 단일 기준이며,
-        // 폰이 ride 를 시작/종료하면 그 레벨을 워치가 따라가 세션을 켜고/끈다(desync 방지).
+        // 워치 DISCONNECT(폰 주행 중)만 종료 요청. CONNECT 는 워치에서 센서만 켜고 폰 Start 와 분리.
         watch.onWatchRequest = { [weak self] start in
-            guard let self else { return }
-            if start {
-                if self.state != .running { self.start() }   // idle→시작, paused→재개
-            } else {
-                if self.state != .idle { self.finish() }
-            }
+            guard let self, !start, self.state != .idle else { return }
+            self.finish()
         }
         watch.isRideActive = { [weak self] in (self?.state ?? .idle) != .idle }
 
         health.start()   // Apple Health 누적 거리 관찰 시작
         importBaselineHistoryIfNeeded()
+        applySensorMode()
+    }
+
+    /// 📱/⌚ 선택에 따라 폰 BLE ↔ 워치 중계를 상호 배타적으로 켜고/끈다. 심박(워치)은 유지.
+    private func applySensorMode() {
+        phoneBleActivateWork?.cancel()
+        let previous = lastAppliedSensorMode
+        lastAppliedSensorMode = sensorMode
+        switch sensorMode {
+        case .phone:
+            watch.setSpeedCadenceRelayActive(false)
+            lastSpeedAt[.watch] = nil
+            lastCadenceAt[.watch] = nil
+            if previous == .watch {
+                // ⌚→📱: 워치가 CSC 를 놓을 시간을 준 뒤 폰 BLE 재연결
+                ble.setConnectionsActive(false)
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self, self.sensorMode == .phone else { return }
+                    self.ble.setConnectionsActive(true)
+                }
+                phoneBleActivateWork = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
+            } else {
+                ble.setConnectionsActive(true)
+            }
+        case .watch:
+            ble.setConnectionsActive(false)
+            watch.setSpeedCadenceRelayActive(true)
+            lastSpeedAt[.bleSensor] = nil
+            lastCadenceAt[.bleSensor] = nil
+        }
+        refreshSpeedCadenceAfterModeChange()
+    }
+
+    private func refreshSpeedCadenceAfterModeChange() {
+        if sensorMode == .phone, !ble.speedConnected {
+            currentSpeedMps = location.gpsSpeedMetersPerSecond
+        } else if sensorMode == .watch, watch.watchSpeedMps == nil {
+            currentSpeedMps = location.gpsSpeedMetersPerSecond
+        }
+        if sensorMode == .phone, !ble.cadenceConnected { cadence = nil }
+        if sensorMode == .watch, !watch.cadenceSensorConnected { cadence = nil }
     }
 
     // V5: 시드 삭제 기준을 1.5km 로 낮춰 [1.5~5km] 13건을 추가(총 1,898건). 기존 설치는
@@ -642,7 +733,7 @@ final class RideSession: ObservableObject {
     }
 
     private func makeRecord(startedAt started: Date) -> RideRecord {
-        let avgSpeed = rideSeconds > 1 ? distanceMeters / rideSeconds : 0   // 라이딩 시간 기준
+        let avgSpeed = movingSeconds > 1 ? distanceMeters / movingSeconds : 0   // 움직인 시간 기준
         return RideRecord(
             name: routeName,
             bikeName: bikeName,
@@ -656,6 +747,7 @@ final class RideSession: ObservableObject {
             maxHeartRate: maxHeartRate,
             avgHeartRate: avgHeartRate,
             maxCadence: maxCadence,
+            avgCadence: avgCadence,
             track: buildTrackPoints())
     }
 
@@ -721,8 +813,8 @@ final class RideSession: ObservableObject {
     var displaySpeed: Double { unit.speed(fromMetersPerSecond: currentSpeedMps) }
     var displayMaxSpeed: Double { unit.speed(fromMetersPerSecond: maxSpeedMps) }
     var displayAverageSpeed: Double {
-        guard rideSeconds > 1 else { return 0 }
-        return unit.speed(fromMetersPerSecond: distanceMeters / rideSeconds)
+        guard movingSeconds > 1 else { return 0 }
+        return unit.speed(fromMetersPerSecond: distanceMeters / movingSeconds)
     }
     // 누적 거리: **Routes(라이딩 기록) 주행거리 총합** 기준(통합 정리로 중복 제거된 목록).
     // 진행 중 라이딩은 현재 거리(distanceMeters)를 더해 실시간 표시.
@@ -807,12 +899,24 @@ final class RideSession: ObservableObject {
         clock = Date()
         totalSeconds = Date().timeIntervalSince(started)
         rideSeconds += 0.5
-        if currentSpeedMps >= movingSpeedThresholdMps {
+        if speedMpsForMovingTime() >= movingSpeedThresholdMps {
             movingSeconds += 0.5
         }
         // 거리는 항상 폰 GPS 기준.
         distanceMeters = location.distanceMeters
         accumulateElevationGain()
+    }
+
+    /// moving time·평균속도용 속도 — 센서 연결 시 BLE/워치, 없으면 GPS.
+    private func speedMpsForMovingTime() -> Double {
+        switch sensorMode {
+        case .phone where ble.speedConnected:
+            return ble.speedMps
+        case .watch where watch.speedSensorConnected:
+            return watch.watchSpeedMps ?? 0
+        default:
+            return location.gpsSpeedMetersPerSecond
+        }
     }
 
     /// GPS 고도의 양(+) 변화량을 누적해 등반 고도를 계산(0.5m 히스테리시스로 노이즈 제거).
