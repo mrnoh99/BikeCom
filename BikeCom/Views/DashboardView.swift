@@ -24,8 +24,8 @@ struct DashboardView: View {
             VStack(spacing: 0) {
                 header(layout)
                 grid(layout)
-                statusRow(layout)
                 controls(layout)
+                statusRow(layout)   // GPS·센서 연결 표시는 Start 버튼 아래로
                 gpsBar(layout)
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
