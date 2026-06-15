@@ -51,6 +51,8 @@ struct RideRecord: Identifiable, Codable {
         var speed: Double? = nil    // 속도(m/s)
         var hr: Int? = nil          // 심박(bpm)
         var clCoordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lon) }
+        /// 표시용 GPS 좌표 문자열(위도, 경도).
+        var gpsText: String { String(format: "%.4f, %.4f", lat, lon) }
     }
 
     init(id: UUID = UUID(), name: String, bikeName: String? = nil, source: RideSource? = nil,

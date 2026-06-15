@@ -66,14 +66,11 @@ struct RideRow: View {
             Text(routeDateFormatter.string(from: record.startedAt))
                 .font(.caption2).foregroundColor(.secondary)
             if hasGPS {
-                HStack(spacing: 6) {
-                    Image(systemName: "smallcircle.filled.circle").foregroundColor(Theme.green)
-                    Text(startPlace.isEmpty ? "출발 …" : "출발 \(startPlace)")
-                    Image(systemName: "arrow.right").foregroundColor(.secondary)
-                    Image(systemName: "mappin.circle.fill").foregroundColor(Theme.red)
-                    Text(endPlace.isEmpty ? "도착 …" : "도착 \(endPlace)")
+                VStack(alignment: .leading, spacing: 2) {
+                    placeLine("smallcircle.filled.circle", Theme.green, "출발", startPlace, record.startCoord)
+                    placeLine("mappin.circle.fill", Theme.red, "도착", endPlace, record.endCoord)
                 }
-                .font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                .font(.caption2).foregroundColor(.secondary)   // 출발·도착 동일 크기
             }
         }
         .padding(.vertical, 2)
@@ -86,6 +83,19 @@ struct RideRow: View {
                 endPlace = await PlaceNameCache.shared.name(for: e.clCoordinate)
             }
         }
+    }
+
+    /// 출발/도착 한 줄: 핀 + 라벨 + 근처 지명 + GPS 좌표(모두 같은 크기).
+    @ViewBuilder
+    private func placeLine(_ icon: String, _ color: Color, _ label: String,
+                           _ place: String, _ coord: RideRecord.Coordinate?) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).foregroundColor(color)
+            Text("\(label) \(place.isEmpty ? "…" : place)")
+            if let coord { Text(coord.gpsText).foregroundColor(.secondary) }
+            Spacer(minLength: 0)
+        }
+        .lineLimit(1)
     }
 }
 
@@ -601,15 +611,11 @@ struct RideDetailView: View {
                     Text(routeDateFormatter.string(from: record.startedAt))
                         .font(.caption).foregroundColor(.secondary)
                     if record.trackCount > 1 {
-                        HStack(spacing: 6) {
-                            Image(systemName: "smallcircle.filled.circle").foregroundColor(Theme.green)
-                            Text(startPlace.isEmpty ? "출발 …" : "출발 \(startPlace)")
-                            Image(systemName: "arrow.right").foregroundColor(.secondary)
-                            Image(systemName: "mappin.circle.fill").foregroundColor(Theme.red)
-                            Text(endPlace.isEmpty ? "도착 …" : "도착 \(endPlace)")
+                        VStack(alignment: .leading, spacing: 3) {
+                            detailPlaceLine("smallcircle.filled.circle", Theme.green, "출발", startPlace, record.startCoord)
+                            detailPlaceLine("mappin.circle.fill", Theme.red, "도착", endPlace, record.endCoord)
                         }
-                        .font(.caption).foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
+                        .font(.caption).foregroundColor(.secondary)   // 출발·도착 동일 크기
                     }
                 }
 
@@ -792,6 +798,19 @@ struct RideDetailView: View {
         }
         .frame(maxWidth: .infinity).padding(.vertical, 14)
         .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// 출발/도착 한 줄: 핀 + 라벨 + 근처 지명 + GPS 좌표(모두 같은 크기).
+    @ViewBuilder
+    private func detailPlaceLine(_ icon: String, _ color: Color, _ label: String,
+                                 _ place: String, _ coord: RideRecord.Coordinate?) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).foregroundColor(color)
+            Text("\(label) \(place.isEmpty ? "…" : place)")
+            if let coord { Text(coord.gpsText).foregroundColor(.secondary) }
+            Spacer(minLength: 0)
+        }
+        .lineLimit(1)
     }
 }
 
