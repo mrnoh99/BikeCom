@@ -286,7 +286,7 @@ struct DashboardView: View {
         }
     }
 
-    // Start / Done 버튼 (페이지 이동은 하단 탭으로). 라이딩 설정은 자전거 풀다운 '직접 입력…' 또는 More.
+    // Start / Done 버튼 + 설정(기어) — 기어는 정리된 리스트(More)로 이동.
     private func controls(_ layout: DeviceLayout.Dashboard) -> some View {
         HStack(spacing: 10) {
             Button(action: { session.start() }) {
@@ -306,6 +306,13 @@ struct DashboardView: View {
                         .frame(height: layout.controlHeight)
                         .background(Capsule().fill(Theme.gray))
                 }
+            }
+            // 설정·이동(지도/기록/장치)·통계가 정리된 리스트로 진입.
+            Button { dest = .more } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: layout.gearIcon * 1.5, weight: .semibold))
+                    .foregroundColor(Theme.gold)
+                    .frame(width: layout.gearIcon * 1.5 + 24, height: layout.controlHeight)
             }
         }
         .padding(.horizontal, layout.headerHPadding)

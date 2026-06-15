@@ -9,6 +9,14 @@ struct MoreView: View {
 
     var body: some View {
         List {
+            Section("보기") {
+                NavigationLink { MapTabView() } label: {
+                    Label("지도", systemImage: "map")
+                }
+                NavigationLink { RoutesView() } label: {
+                    Label("라이딩 기록", systemImage: "folder")
+                }
+            }
             Section("라이딩 설정") {
                 HStack {
                     Text("라이딩 이름")
@@ -103,7 +111,7 @@ struct MoreView: View {
         .listStyle(.insetGrouped)
         .scrollDismissesKeyboard(.interactively)
         .contentMargins(.bottom, 12, for: .scrollContent)
-        .navigationTitle("More")
+        .navigationTitle("설정")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { session.refreshDataStats() }
         .sheet(isPresented: $showSettings) {
