@@ -604,33 +604,42 @@ struct RideDetailView: View {
                     emptyTrackPlaceholder
                 }
 
-                // 코스명 · 자전거
+                // 식별 정보(코스명 · 자전거 · 날짜)
                 VStack(spacing: 4) {
                     Text(record.name).font(.system(size: 20, weight: .bold))
                     Text(record.bikeName?.isEmpty == false ? record.bikeName! : "자전거 미지정")
                         .font(.subheadline).foregroundColor(.secondary)
                     Text(routeDateFormatter.string(from: record.startedAt))
                         .font(.caption).foregroundColor(.secondary)
-                    if record.trackCount > 1 {
-                        VStack(alignment: .leading, spacing: 3) {
-                            detailPlaceLine("smallcircle.filled.circle", Theme.green, "출발", startPlace, record.startCoord)
-                            detailPlaceLine("mappin.circle.fill", Theme.red, "도착", endPlace, record.endCoord)
-                        }
-                        .font(.caption).foregroundColor(.secondary)   // 출발·도착 동일 크기
-                    }
                 }
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    stat("거리", String(format: "%.2f %@", unit.distance(fromMeters: record.distanceMeters), unit.distanceLabel), Theme.gold)
-                    stat("라이딩 시간", formatDuration(record.duration), Theme.gold)
-                    stat("평균 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.averageSpeedMps), unit.speedLabel), Theme.value)
-                    stat("최고 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.maxSpeedMps), unit.speedLabel), Theme.blue)
-                    stat("최대 심박", record.maxHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
-                    stat("평균 심박", record.avgHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
-                    stat("평균 케이던스", record.avgCadence.map { "\($0) rpm" } ?? "–", Theme.value)
-                    stat("총 경과", formatDuration(record.totalElapsed), Theme.value)
+                // 요약 통계
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionHeader("요약 통계")
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        stat("거리", String(format: "%.2f %@", unit.distance(fromMeters: record.distanceMeters), unit.distanceLabel), Theme.gold)
+                        stat("라이딩 시간", formatDuration(record.duration), Theme.gold)
+                        stat("평균 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.averageSpeedMps), unit.speedLabel), Theme.value)
+                        stat("최고 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.maxSpeedMps), unit.speedLabel), Theme.blue)
+                        stat("최대 심박", record.maxHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
+                        stat("평균 심박", record.avgHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
+                        stat("평균 케이던스", record.avgCadence.map { "\($0) rpm" } ?? "–", Theme.value)
+                        stat("총 경과", formatDuration(record.totalElapsed), Theme.value)
+                    }
                 }
                 .padding(.horizontal)
+
+                // 위치(출발 · 도착) — 근처 지명 + GPS 좌표
+                if record.trackCount > 1 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        sectionHeader("위치")
+                        detailPlaceLine("smallcircle.filled.circle", Theme.green, "출발", startPlace, record.startCoord)
+                        detailPlaceLine("mappin.circle.fill", Theme.red, "도착", endPlace, record.endCoord)
+                    }
+                    .font(.subheadline).foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                }
 
                 if record.trackCount > 1 { mapCourseCard }
 
@@ -808,6 +817,14 @@ struct RideDetailView: View {
         }
         .frame(maxWidth: .infinity).padding(.vertical, 14)
         .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// 상세 화면 섹션 헤더(좌측 정렬, 작은 대문자 느낌).
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundColor(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// 출발/도착 한 줄: 핀 + 라벨 + 근처 지명 + GPS 좌표(모두 같은 크기).

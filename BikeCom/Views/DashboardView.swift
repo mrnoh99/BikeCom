@@ -199,44 +199,11 @@ struct DashboardView: View {
                            subvalue: session.spo2Percent != nil ? (session.spo2LatestTimeText ?? " ") : " ",
                            valueSuffix: session.spo2Percent != nil ? "%" : nil)
             }
-            divider
-            distanceStatsRow(layout)
+            // 누적 거리(Month/Year/Total)는 More 탭으로 이동(중복 제거·대시보드 여백 확보).
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, layout.gridHPadding)
         }
-    }
-
-    // Month·Year·Total — km 단위는 값 아래 작은 글씨.
-    private func distanceStatsRow(_ layout: DeviceLayout.Dashboard) -> some View {
-        let month = fmt(session.thisMonthDistance, 0)
-        let year = fmt(session.thisYearDistance, 0)
-        let total = fmt(session.totalDistance, 0)
-        let unit = session.unit.distanceLabel
-
-        return GeometryReader { geo in
-            let labelHeight = layout.labelFont * 1.2
-            let footerHeight = layout.unitFont * 1.2
-            let valueHeight = max(geo.size.height - labelHeight - footerHeight - 2, 10)
-            let colWidth = max(geo.size.width / 3 - 4, 10)
-            let fitted = MetricCell.fittedValueFontSize(
-                value: month,
-                maxWidth: colWidth,
-                maxHeight: valueHeight
-            )
-            let fontSize = fitted * 0.82   // 누적 거리 행은 다른 행보다 약간 작게
-
-            HStack(spacing: 0) {
-                MetricCell(label: "Month", value: month, rowIndex: 6,
-                           unit: unit, fixedValueFontSize: fontSize)
-                MetricCell(label: "Year", value: year, rowIndex: 6,
-                           unit: unit, fixedValueFontSize: fontSize)
-                MetricCell(label: "Total", value: total, rowIndex: 6,
-                           unit: unit, fixedValueFontSize: fontSize)
-            }
-            .frame(width: geo.size.width, height: geo.size.height)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func metricRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -319,7 +286,7 @@ struct DashboardView: View {
         }
     }
 
-    // Start / Done 버튼 + 설정 기어
+    // Start / Done 버튼 (페이지 이동은 하단 탭으로). 라이딩 설정은 자전거 풀다운 '직접 입력…' 또는 More.
     private func controls(_ layout: DeviceLayout.Dashboard) -> some View {
         HStack(spacing: 10) {
             Button(action: { session.start() }) {
@@ -339,21 +306,6 @@ struct DashboardView: View {
                         .frame(height: layout.controlHeight)
                         .background(Capsule().fill(Theme.gray))
                 }
-            }
-
-            Menu {
-                Button { dest = .map } label: { Label("지도", systemImage: "map") }
-                Button { dest = .routes } label: { Label("라이딩 기록", systemImage: "folder") }
-                Button { dest = .devices } label: { Label("장치", systemImage: "dot.radiowaves.left.and.right") }
-                Button { dest = .more } label: { Label("더보기 · 가져오기", systemImage: "ellipsis.circle") }
-                Divider()
-                Button { showSettings = true } label: { Label("라이딩 설정", systemImage: "slider.horizontal.3") }
-            } label: {
-                // 설정 아이콘 크게 + 폭 확대 → Start 버튼 폭은 조금 줄어든다.
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: layout.gearIcon * 1.5, weight: .semibold))
-                    .foregroundColor(Theme.gold)
-                    .frame(width: layout.gearIcon * 1.5 + 24, height: layout.controlHeight)
             }
         }
         .padding(.horizontal, layout.headerHPadding)

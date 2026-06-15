@@ -3,31 +3,35 @@ import SwiftUI
 /// More 탭 — 센서·정보 등 기타 설정. (데이터 가져오기/정리는 Routes 첫 페이지로 이동)
 struct MoreView: View {
     @EnvironmentObject var session: RideSession
+    @State private var showSettings = false
+    @State private var showAddCourse = false
+    @State private var newCourseName = ""
 
     var body: some View {
         List {
-            Section("라이딩") {
+            Section("라이딩 설정") {
                 HStack {
                     Text("라이딩 이름")
                     Spacer()
                     TextField("", text: $session.routeName)
                         .multilineTextAlignment(.trailing)
                 }
-            }
-            Section("자전거 종류") {
                 Menu {
                     ForEach(RideSession.bikePresets, id: \.self) { name in
                         Button(name) { session.selectBike(name) }   // 등록된 휠 규격 자동 적용
                     }
                 } label: {
                     HStack {
-                        Text("종류")
+                        Text("자전거")
                         Spacer()
                         Text(session.bikeName).foregroundColor(.secondary)
                         Image(systemName: "chevron.up.chevron.down").foregroundColor(.secondary)
                     }
                 }
-                TextField("직접 입력", text: $session.bikeName)
+                TextField("자전거 직접 입력", text: $session.bikeName)
+                Button { showSettings = true } label: {
+                    Label("휠 규격 · 코스 편집", systemImage: "slider.horizontal.3")
+                }
             }
             Section {
                 statRow("이번 달", session.thisMonthDistance)
@@ -57,7 +61,12 @@ struct MoreView: View {
                 }
             }
             dataSourceSection
-            Section("센서") {
+            Section("기기 · 센서") {
+                NavigationLink {
+                    DevicesView()
+                } label: {
+                    Label("기기 연결 관리", systemImage: "dot.radiowaves.left.and.right")
+                }
                 MoreSensorRows(watch: session.watch, location: session.location, unit: session.unit)
             }
             Section {
@@ -97,6 +106,17 @@ struct MoreView: View {
         .navigationTitle("More")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { session.refreshDataStats() }
+        .sheet(isPresented: $showSettings) {
+            RideSettingsSheet(showAddCourse: $showAddCourse, newCourseName: $newCourseName)
+                .environmentObject(session)
+        }
+        .alert("코스 추가", isPresented: $showAddCourse) {
+            TextField("코스 이름 (예: 한강 라이딩)", text: $newCourseName)
+            Button("추가") { session.addCourse(newCourseName) }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("새 코스를 만들어 목록에 추가합니다.")
+        }
     }
 
     // MARK: - 데이터 출처 통계

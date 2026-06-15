@@ -1,20 +1,34 @@
 import SwiftUI
 
-/// 앱의 루트 뷰. Stopwatch(대시보드) 단일 화면 — 지도·기록·장치·더보기는 ⚙️ 메뉴로 접근.
+/// 앱의 루트 뷰. 하단 탭으로 Ride(대시보드)·Map·Routes·More 를 오간다.
 struct ContentView: View {
     @EnvironmentObject var session: RideSession
     @Environment(\.scenePhase) private var scenePhase
+    @State private var tab = 0
 
     var body: some View {
-        ZStack {
-            Theme.background.ignoresSafeArea()
+        TabView(selection: $tab) {
             NavigationStack {
                 DashboardView()
                     .toolbar(.hidden, for: .navigationBar)
                     .toolbarBackground(.hidden, for: .navigationBar)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .tag(0)
+            .tabItem { Label("Ride", systemImage: "stopwatch.fill") }
+
+            NavigationStack { MapTabView() }
+                .tag(1)
+                .tabItem { Label("Map", systemImage: "map.fill") }
+
+            NavigationStack { RoutesView() }
+                .tag(2)
+                .tabItem { Label("Routes", systemImage: "list.bullet") }
+
+            NavigationStack { MoreView() }
+                .tag(3)
+                .tabItem { Label("More", systemImage: "gearshape.fill") }
         }
+        .tint(Theme.gold)
         .onAppear { session.refreshScreenAwake() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { session.refreshScreenAwake() }
