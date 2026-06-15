@@ -199,11 +199,44 @@ struct DashboardView: View {
                            subvalue: session.spo2Percent != nil ? (session.spo2LatestTimeText ?? " ") : " ",
                            valueSuffix: session.spo2Percent != nil ? "%" : nil)
             }
-            // 누적 거리(Month/Year/Total)는 More 탭으로 이동(중복 제거·대시보드 여백 확보).
+            divider
+            distanceStatsRow(layout)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, layout.gridHPadding)
         }
+    }
+
+    // Month·Year·Total — km 단위는 값 아래 작은 글씨.
+    private func distanceStatsRow(_ layout: DeviceLayout.Dashboard) -> some View {
+        let month = fmt(session.thisMonthDistance, 0)
+        let year = fmt(session.thisYearDistance, 0)
+        let total = fmt(session.totalDistance, 0)
+        let unit = session.unit.distanceLabel
+
+        return GeometryReader { geo in
+            let labelHeight = layout.labelFont * 1.2
+            let footerHeight = layout.unitFont * 1.2
+            let valueHeight = max(geo.size.height - labelHeight - footerHeight - 2, 10)
+            let colWidth = max(geo.size.width / 3 - 4, 10)
+            let fitted = MetricCell.fittedValueFontSize(
+                value: month,
+                maxWidth: colWidth,
+                maxHeight: valueHeight
+            )
+            let fontSize = fitted * 0.82   // 누적 거리 행은 다른 행보다 약간 작게
+
+            HStack(spacing: 0) {
+                MetricCell(label: "Month", value: month, rowIndex: 6,
+                           unit: unit, fixedValueFontSize: fontSize)
+                MetricCell(label: "Year", value: year, rowIndex: 6,
+                           unit: unit, fixedValueFontSize: fontSize)
+                MetricCell(label: "Total", value: total, rowIndex: 6,
+                           unit: unit, fixedValueFontSize: fontSize)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func metricRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
