@@ -124,13 +124,11 @@ struct RideSettingsSheet: View {
     private func saveAndDismiss() {
         session.routeName = routeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? session.routeName : routeName
-        let bike = bikeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if bike.isEmpty {
-            session.wheelCircumferenceMeters = selectedWheel.circumferenceMeters
-        } else {
-            session.selectBike(bike)                              // 자전거 선택
-            session.setWheel(optionId: selectedWheelId, forBike: bike)  // 휠 등록 + 즉시 적용
-        }
+        // 이름 칸이 비면 현재 자전거를 그대로 사용 → 휠 규격은 항상 어떤 자전거에 매핑된다.
+        let typed = bikeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bike = typed.isEmpty ? session.bikeName : typed
+        session.selectBike(bike)                                   // 자전거 선택
+        session.setWheel(optionId: selectedWheelId, forBike: bike) // 휠 등록 + 즉시 적용
         session.saveSettings()
         dismiss()
     }
