@@ -167,6 +167,28 @@ struct WatchContentView: View {
             }
             .tint(.cyan)
             .disabled(workout.measuringSpO2)
+
+            // 진단: 주행 중 비정상 종료 후 복귀 횟수.
+            if workout.recoveryCount > 0 {
+                VStack(spacing: 2) {
+                    Text("세션 복구 \(workout.recoveryCount)회")
+                        .font(.system(size: 11))
+                        .foregroundColor(.orange)
+                    if let at = workout.lastRecoveryAt {
+                        Text("최근 \(Self.clock.string(from: at))")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                    Button("진단 초기화") {
+                        RideMetricsStore.resetDiagnostics()
+                        workout.recoveryCount = 0
+                        workout.lastRecoveryAt = nil
+                    }
+                    .font(.system(size: 10))
+                    .tint(.gray)
+                }
+                .padding(.top, 2)
+            }
             Spacer(minLength: 0)
         }
         .padding()

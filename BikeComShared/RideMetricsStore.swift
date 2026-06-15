@@ -78,6 +78,38 @@ enum RideMetricsStore {
         )
     }
 
+    // MARK: - 진단: 주행 중 비정상 종료 → 복귀 횟수
+
+    private static let recoveryCountKey = "diag.recoveryCount"
+    private static let lastRecoveryAtKey = "diag.lastRecoveryAt"
+
+    struct Diagnostics {
+        var recoveryCount = 0
+        var lastRecoveryAt: Date?
+    }
+
+    static func diagnostics() -> Diagnostics {
+        guard let d = defaults else { return Diagnostics() }
+        let t = d.double(forKey: lastRecoveryAtKey)
+        return Diagnostics(recoveryCount: d.integer(forKey: recoveryCountKey),
+                           lastRecoveryAt: t > 0 ? Date(timeIntervalSince1970: t) : nil)
+    }
+
+    /// 주행 중 비정상 종료 후 복귀를 1회 기록한다(누적 카운트 + 시각). 새 누적값 반환.
+    @discardableResult
+    static func recordRecovery() -> Int {
+        guard let d = defaults else { return 0 }
+        let n = d.integer(forKey: recoveryCountKey) + 1
+        d.set(n, forKey: recoveryCountKey)
+        d.set(Date().timeIntervalSince1970, forKey: lastRecoveryAtKey)
+        return n
+    }
+
+    static func resetDiagnostics() {
+        defaults?.removeObject(forKey: recoveryCountKey)
+        defaults?.removeObject(forKey: lastRecoveryAtKey)
+    }
+
     /// 컴플리케이션 시작/정지 버튼 → 워치 앱이 소비한다.
     static func setPendingCommand(_ command: String) {
         defaults?.set(command, forKey: pendingCommandKey)

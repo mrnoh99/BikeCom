@@ -1,6 +1,7 @@
 import Foundation
 import HealthKit
 import WatchConnectivity
+import os
 
 /// 워치에서 사이클링 워크아웃 세션을 돌려 실시간 심박수·속도·케이던스를 수집하고
 /// `WCSession` 으로 아이폰에 전송한다.
@@ -21,6 +22,12 @@ final class WorkoutManager: NSObject, ObservableObject {
     @Published var isRunning = false
     /// 주행 종료 시 채워지는 요약(요약 시트 표시용). 닫으면 nil.
     @Published var summary: WorkoutSummary?
+
+    /// 진단: 주행 중 비정상 종료 후 복귀한 누적 횟수와 마지막 복귀 시각.
+    @Published var recoveryCount: Int = 0
+    @Published var lastRecoveryAt: Date?
+
+    private static let log = Logger(subsystem: "com.jaisungnoh.bikecom", category: "workout")
 
     @Published var spo2: Int = 0
     @Published var measuringSpO2 = false
@@ -68,7 +75,23 @@ final class WorkoutManager: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        let diag = RideMetricsStore.diagnostics()
+        recoveryCount = diag.recoveryCount
+        lastRecoveryAt = diag.lastRecoveryAt
+        detectRecoveryOnLaunch()
         activateSession()
+    }
+
+    /// 콜드 런치 시, 직전 인스턴스가 "주행 중"으로 남기고 사라졌는지 검사한다.
+    /// 그렇다면 시스템이 운동 앱을 강제 종료한 뒤의 복귀로 보고 1회 기록한다.
+    /// (너무 오래된 스냅샷(10분 초과)은 정상 종료로 간주해 무시.)
+    private func detectRecoveryOnLaunch() {
+        let snap = RideMetricsStore.load()
+        guard snap.isRunning, Date().timeIntervalSince(snap.updatedAt) < 600 else { return }
+        let n = RideMetricsStore.recordRecovery()
+        Self.log.warning("워크아웃 비정상 종료 후 복귀 #\(n, privacy: .public) — 마지막 갱신 \(snap.updatedAt.timeIntervalSince1970, privacy: .public)")
+        recoveryCount = n
+        lastRecoveryAt = Date()
     }
 
     private func activateSession() {
@@ -434,6 +457,7 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
 
     func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
         isStarting = false
+        Self.log.error("워크아웃 세션 실패: \(error.localizedDescription, privacy: .public)")
         // 실패한 세션은 종료·해제해 다음 시작이 새 세션으로 진행되게 한다.
         session?.end()
         session = nil
