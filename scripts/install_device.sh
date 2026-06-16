@@ -183,20 +183,77 @@ else
 fi
 
 WATCH_APP="$APP/Watch/BikeComWatch.app"
+WIDGET_APP="$WATCH_APP/PlugIns/BikeComWatchWidget.appex"
+
+verify_watch_bundle() {
+  local missing=0
+  if [[ ! -d "$WATCH_APP" ]]; then
+    echo "   ❌ Watch 앱 번들 없음: $WATCH_APP"
+    missing=1
+  fi
+  if [[ ! -f "$WATCH_APP/Assets.car" ]]; then
+    echo "   ❌ Watch Assets.car 없음 — 아이콘 미컴파일 시 기기 설치 실패"
+    missing=1
+  fi
+  if [[ "$(/usr/libexec/PlistBuddy -c 'Print :WKApplication' "$WATCH_APP/Info.plist" 2>/dev/null)" != "true" ]]; then
+    echo "   ❌ WKApplication != true — watchOS 가 설치를 거부합니다"
+    missing=1
+  fi
+  if ! /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$WATCH_APP/Info.plist" >/dev/null 2>&1; then
+    echo "   ❌ CFBundleIconName 없음 — Watch 설치 실패 원인"
+    missing=1
+  fi
+  if [[ ! -d "$WIDGET_APP" ]]; then
+    echo "   ⚠️ Watch 위젯(컴플리케이션) 번들 없음: PlugIns/BikeComWatchWidget.appex"
+  fi
+  return "$missing"
+}
+
+install_to_device() {
+  local device_id="$1"
+  local bundle_path="$2"
+  xcrun devicectl device install app --device "$device_id" "$bundle_path"
+}
+
 echo ""
 echo "==> 5. Watch에 직접 설치"
 if [[ -z "${WATCH_INSTALL_ID:-}" ]]; then
   echo "   ⚠️ 페어링된 Watch 없음 (devicectl)"
   echo "   → iPhone Watch 앱 → 일반 → BikeCom → Apple Watch에 설치 ON"
+  echo "   → 또는 Watch 를 iPhone 에 페어링·연결 후 스크립트 재실행"
 else
   echo "   Watch: $WATCH_NAME ($WATCH_INSTALL_ID)"
-  if xcrun devicectl device install app --device "$WATCH_INSTALL_ID" "$WATCH_APP"; then
-    echo "   ✓ Watch 설치 완료"
+  if ! verify_watch_bundle; then
+    echo "   ❌ Watch 번들 검증 실패 — xcodegen generate 후 재빌드"
+    exit 1
+  fi
+
+  watch_ok=0
+  for attempt in 1 2; do
+    if [[ "$attempt" -gt 1 ]]; then
+      echo "   Watch 설치 재시도 ($attempt/2)…"
+      sleep 2
+    fi
+    if install_to_device "$WATCH_INSTALL_ID" "$WATCH_APP"; then
+      watch_ok=1
+      break
+    fi
+  done
+
+  if [[ "$watch_ok" -eq 1 ]]; then
+    echo "   ✓ Watch 설치 완료 (com.jaisungnoh.bikecom.watchkitapp)"
   else
     echo "   ❌ Watch 직접 설치 실패"
-    echo "   → Watch 설정 → 개인정보 보호 및 보안 → 개발자 모드 ON → 재부팅"
-    echo "   → iPhone·Watch 재부팅 후 ./scripts/install_device.sh 재실행"
-    echo "   → Xcode ⌘R 대신 이 스크립트 사용 (Watch 동기화 설치는 실패할 수 있음)"
+    echo ""
+    echo "   확인 순서:"
+    echo "   1) Watch 설정 → 개인정보 보호 및 보안 → 개발자 모드 ON → Watch 재부팅"
+    echo "   2) iPhone Watch 앱 → 일반 → BikeCom → \"Apple Watch에 설치\" 끄기"
+    echo "   3) iPhone 설정 → 일반 → VPN 및 기기 관리 → 개발자 앱 신뢰"
+    echo "   4) iPhone·Watch 재부팅 후: ./scripts/install_device.sh"
+    echo ""
+    echo "   Xcode ⌘R 만으로 Watch 동기화 설치는 실패하는 경우가 많습니다."
+    echo "   BikeCom 스킴 + iPhone 선택 후에도 Watch 는 이 스크립트로 직접 설치하세요."
+    exit 1
   fi
 fi
 

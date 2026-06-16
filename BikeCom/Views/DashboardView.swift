@@ -2,7 +2,7 @@ import SwiftUI
 
 /// ⚙️ 메뉴로 이동하는 화면들.
 enum DashDestination: String, Identifiable {
-    case map, routes, devices, more
+    case map, routes, sensor, extras, devices
     var id: String { rawValue }
 }
 
@@ -36,8 +36,9 @@ struct DashboardView: View {
             switch d {
             case .map: MapTabView()
             case .routes: RoutesView()
+            case .sensor: SensorSettingsView()
+            case .extras: SettingsExtrasView()
             case .devices: DevicesView()
-            case .more: MoreView()
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -319,7 +320,7 @@ struct DashboardView: View {
         }
     }
 
-    // Start / Done 버튼 + 설정(기어) — 기어는 정리된 리스트(More)로 이동.
+    // Start / Done 버튼 + 설정(기어 Menu).
     private func controls(_ layout: DeviceLayout.Dashboard) -> some View {
         HStack(spacing: 10) {
             Button(action: { session.start() }) {
@@ -340,16 +341,33 @@ struct DashboardView: View {
                         .background(Capsule().fill(Theme.gray))
                 }
             }
-            // 설정·이동(지도/기록/장치)·통계가 정리된 리스트로 진입.
-            Button { dest = .more } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: layout.gearIcon * 1.5, weight: .semibold))
-                    .foregroundColor(Theme.gold)
-                    .frame(width: layout.gearIcon * 1.5 + 24, height: layout.controlHeight)
-            }
+            settingsMenu(layout)
         }
         .padding(.horizontal, layout.headerHPadding)
         .padding(.vertical, layout.controlVPadding)
+    }
+
+    /// 상단 코스·자전거 Menu 와 같은 풀다운 방식.
+    private func settingsMenu(_ layout: DeviceLayout.Dashboard) -> some View {
+        Menu {
+            Button { dest = .map } label: {
+                Label("지도", systemImage: "map")
+            }
+            Button { dest = .routes } label: {
+                Label("라이딩 기록", systemImage: "folder")
+            }
+            Button { dest = .sensor } label: {
+                Label("센서", systemImage: "dot.radiowaves.left.and.right")
+            }
+            Button { dest = .extras } label: {
+                Label("통계", systemImage: "chart.bar")
+            }
+        } label: {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: layout.gearIcon * 1.5, weight: .semibold))
+                .foregroundColor(Theme.gold)
+                .frame(width: layout.gearIcon * 1.5 + 24, height: layout.controlHeight)
+        }
     }
 
     private var startLabel: String {

@@ -67,8 +67,12 @@ cat <<'EOF'
   4. Signing & Capabilities → BikeCom + BikeComWatch 둘 다 Team 설정
   5. ⌘R Run 후 빌드 로그에 "Build target BikeComWatch" 있는지 확인
 
-Watch 앱은 iPhone 앱의 Watch/ 폴더에 묶여 설치됩니다.
-설치 후: iPhone Watch 앱 → 일반 → BikeCom → Apple Watch에 설치 ON
+Watch 앱은 iPhone 앱의 Watch/ 폴더에 묶여 빌드됩니다.
+실기기 설치(권장 — Watch 동기화 실패 방지):
+
+  ./scripts/install_device.sh
+
+설치 후 iPhone Watch 앱 → 일반 → BikeCom → "Apple Watch에 설치" 는 끄기(개발 빌드).
 
 문제 시: ./scripts/check_watch.sh
 

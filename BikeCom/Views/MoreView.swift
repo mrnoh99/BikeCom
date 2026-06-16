@@ -1,46 +1,11 @@
 import SwiftUI
 
-/// More 탭 — 센서·정보 등 기타 설정. (데이터 가져오기/정리는 Routes 첫 페이지로 이동)
-struct MoreView: View {
+/// 통계·설정 — 라이딩·누적·데이터·진단 등.
+struct SettingsExtrasView: View {
     @EnvironmentObject var session: RideSession
-    @State private var showSettings = false
-    @State private var showAddCourse = false
-    @State private var newCourseName = ""
 
     var body: some View {
         List {
-            Section("보기") {
-                NavigationLink { MapTabView() } label: {
-                    Label("지도", systemImage: "map")
-                }
-                NavigationLink { RoutesView() } label: {
-                    Label("라이딩 기록", systemImage: "folder")
-                }
-            }
-            Section("라이딩 설정") {
-                HStack {
-                    Text("라이딩 이름")
-                    Spacer()
-                    TextField("", text: $session.routeName)
-                        .multilineTextAlignment(.trailing)
-                }
-                Menu {
-                    ForEach(RideSession.bikePresets, id: \.self) { name in
-                        Button(name) { session.selectBike(name) }   // 등록된 휠 규격 자동 적용
-                    }
-                } label: {
-                    HStack {
-                        Text("자전거")
-                        Spacer()
-                        Text(session.bikeName).foregroundColor(.secondary)
-                        Image(systemName: "chevron.up.chevron.down").foregroundColor(.secondary)
-                    }
-                }
-                TextField("자전거 직접 입력", text: $session.bikeName)
-                Button { showSettings = true } label: {
-                    Label("휠 규격 · 코스 편집", systemImage: "slider.horizontal.3")
-                }
-            }
             Section {
                 statRow("이번 달", session.thisMonthDistance)
                 statRow("올해", session.thisYearDistance)
@@ -69,14 +34,6 @@ struct MoreView: View {
                 }
             }
             dataSourceSection
-            Section("기기 · 센서") {
-                NavigationLink {
-                    DevicesView()
-                } label: {
-                    Label("기기 연결 관리", systemImage: "dot.radiowaves.left.and.right")
-                }
-                MoreSensorRows(watch: session.watch, location: session.location, unit: session.unit)
-            }
             Section {
                 HStack {
                     Text("워치 세션 복구")
@@ -105,29 +62,16 @@ struct MoreView: View {
                     Text("Developed by JaiSung NOH MD 2026").foregroundColor(.secondary)
                 }
             } footer: {
-                Text("데이터 가져오기·기록 통합 정리는 Routes(라이딩 기록) 첫 페이지의 ⤓ 메뉴로 옮겼습니다. 속도·케이던스는 워치에 페어링한 BLE 센서만 사용합니다.")
+                Text("데이터 가져오기·기록 통합 정리는 라이딩 기록 첫 페이지의 ⤓ 메뉴로 옮겼습니다.")
             }
         }
         .listStyle(.insetGrouped)
         .scrollDismissesKeyboard(.interactively)
         .contentMargins(.bottom, 12, for: .scrollContent)
-        .navigationTitle("설정")
+        .navigationTitle("통계")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { session.refreshDataStats() }
-        .sheet(isPresented: $showSettings) {
-            RideSettingsSheet(showAddCourse: $showAddCourse, newCourseName: $newCourseName)
-                .environmentObject(session)
-        }
-        .alert("코스 추가", isPresented: $showAddCourse) {
-            TextField("코스 이름 (예: 한강 라이딩)", text: $newCourseName)
-            Button("추가") { session.addCourse(newCourseName) }
-            Button("취소", role: .cancel) {}
-        } message: {
-            Text("새 코스를 만들어 목록에 추가합니다.")
-        }
     }
-
-    // MARK: - 데이터 출처 통계
 
     @ViewBuilder private var dataSourceSection: some View {
         if let s = session.dataStats {
@@ -204,58 +148,12 @@ struct MoreView: View {
     }
 }
 
-/// 센서 행만 국소 갱신 — watch 상태 변경이 More List 전체 재렌더·스크롤 끊김을 일으키지 않게 한다.
-private struct MoreSensorRows: View {
-    @ObservedObject var watch: WatchSensorManager
-    @ObservedObject var location: LocationManager
-    let unit: DistanceUnit
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            Group {
-                HStack {
-                    Text("위치 권한")
-                    Spacer()
-                    Text(location.authorized ? "허용됨" : "필요")
-                        .foregroundColor(location.authorized ? Theme.green : Theme.red)
-                }
-                HStack {
-                    Text("심박 측정")
-                    Spacer()
-                    Text(watch.watchReachable ? "Apple Watch 연결됨" : "Apple Watch")
-                        .foregroundColor(watch.watchReachable ? Theme.green : .secondary)
-                }
-                HStack {
-                    Text("워치 속도")
-                    Spacer()
-                    Text(speedText)
-                        .foregroundColor(watch.watchSpeedMps != nil ? Theme.green : .secondary)
-                }
-                HStack {
-                    Text("워치 케이던스")
-                    Spacer()
-                    Text(cadenceText)
-                        .foregroundColor(watch.watchCadenceRPM != nil ? Theme.green : .secondary)
-                }
-            }
-        }
-    }
-
-    private var speedText: String {
-        guard let mps = watch.watchSpeedMps else { return "수신 대기" }
-        return String(format: "%.1f %@", unit.speed(fromMetersPerSecond: mps), unit.speedLabel)
-    }
-
-    private var cadenceText: String {
-        guard let rpm = watch.watchCadenceRPM else { return "수신 대기" }
-        return "\(rpm) rpm"
-    }
-}
-
 #if DEBUG
 #Preview {
-    MoreView()
-        .environmentObject(RideSession.preview)
-        .preferredColorScheme(.dark)
+    NavigationStack {
+        SettingsExtrasView()
+            .environmentObject(RideSession.preview)
+    }
+    .preferredColorScheme(.dark)
 }
 #endif

@@ -34,6 +34,14 @@ schemes:
         BikeComWatch: all
     run:
       config: Debug
+      postActions:
+        - name: Install Watch App
+          settingsTarget: BikeCom
+          script: |
+            if [[ -d /Applications/Xcode.app/Contents/Developer ]]; then
+              export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+            fi
+            "${SRCROOT}/scripts/install_watch_only.sh" || echo "warning: Watch install failed — run ./scripts/install_device.sh"
     archive:
       config: Release
   BikeComWatch:

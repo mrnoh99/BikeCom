@@ -128,7 +128,7 @@ struct WatchContentView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .frame(minWidth: 88)
                 }
-                .tint(workout.isRunning ? .red : .green)
+                .tint(workout.isRunning ? .red : .blue)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
