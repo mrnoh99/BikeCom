@@ -590,6 +590,20 @@ struct RideDetailView: View {
 
     private var coords: [CLLocationCoordinate2D] { loadedTrack.map { $0.clCoordinate } }
 
+    /// 트랙 고도(ele)로 계산한 누적 상승·하강(m). 0.5m 히스테리시스로 GPS 노이즈 제거.
+    /// 고도 샘플이 없으면 nil(트랙 로드 전·고도 미기록 기록).
+    private var elevation: (gain: Double, loss: Double)? {
+        let eles = loadedTrack.compactMap { $0.ele }
+        guard eles.count > 1 else { return nil }
+        var gain = 0.0, loss = 0.0, last = eles[0]
+        for e in eles.dropFirst() {
+            let d = e - last
+            if d > 0.5 { gain += d; last = e }
+            else if d < -0.5 { loss += -d; last = e }
+        }
+        return (gain, loss)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -624,6 +638,8 @@ struct RideDetailView: View {
                         stat("최대 심박", record.maxHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
                         stat("평균 심박", record.avgHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
                         stat("평균 케이던스", record.avgCadence.map { "\($0) rpm" } ?? "–", Theme.value)
+                        stat("등반", elevation.map { String(format: "%.0f m", $0.gain) } ?? "–", Theme.green)
+                        stat("하강", elevation.map { String(format: "%.0f m", $0.loss) } ?? "–", Theme.value)
                         stat("총 경과", formatDuration(record.totalElapsed), Theme.value)
                     }
                 }
