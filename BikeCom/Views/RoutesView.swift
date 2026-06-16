@@ -567,6 +567,23 @@ enum RouteGrouping {
     }
 }
 
+/// 차트용 한 점(거리 km, 값).
+struct SeriesPoint: Identifiable {
+    let id = UUID()
+    let km: Double
+    let value: Double
+}
+
+/// 트랙에서 1회 계산하는 파생 지표.
+struct TrackDerived {
+    var gain = 0.0, loss = 0.0
+    var minEle: Double?, maxEle: Double?
+    var avgGrade: Double?, maxGrade: Double?
+    var hrSeries: [SeriesPoint] = []
+    var speedSeries: [SeriesPoint] = []
+    var hasElevation: Bool { maxEle != nil }
+}
+
 /// 라이딩 상세 — 지도 + 핵심 지표.
 struct RideDetailView: View {
     @EnvironmentObject var session: RideSession
@@ -590,18 +607,85 @@ struct RideDetailView: View {
 
     private var coords: [CLLocationCoordinate2D] { loadedTrack.map { $0.clCoordinate } }
 
-    /// 트랙 고도(ele)로 계산한 누적 상승·하강(m). 0.5m 히스테리시스로 GPS 노이즈 제거.
-    /// 고도 샘플이 없으면 nil(트랙 로드 전·고도 미기록 기록).
-    private var elevation: (gain: Double, loss: Double)? {
-        let eles = loadedTrack.compactMap { $0.ele }
-        guard eles.count > 1 else { return nil }
-        var gain = 0.0, loss = 0.0, last = eles[0]
-        for e in eles.dropFirst() {
-            let d = e - last
-            if d > 0.5 { gain += d; last = e }
-            else if d < -0.5 { loss += -d; last = e }
+    /// 트랙에서 1회 계산한 파생 지표(고도·경사·시계열). 트랙 로드 시 채운다.
+    @State private var derived = TrackDerived()
+
+    /// 평균 페이스(min/km). 평균 속도 기반.
+    private var avgPace: String? {
+        let kmh = record.averageSpeedMps * 3.6
+        guard kmh > 0.5 else { return nil }
+        let minPerKm = 60 / kmh
+        let m = Int(minPerKm); let s = Int(((minPerKm - Double(m)) * 60).rounded())
+        return String(format: "%d:%02d /km", m, s == 60 ? 0 : s)
+    }
+
+    /// 정지 시간(총 경과 − 라이딩 시간).
+    private var stoppedSeconds: TimeInterval { max(0, record.totalElapsed - record.duration) }
+
+    /// 추정 소모 칼로리(체중 70kg 가정, 평균 속도 MET). 어디까지나 근사값.
+    private var estimatedKcal: Int? {
+        let hours = record.duration / 3600
+        guard hours > 0 else { return nil }
+        let kmh = record.averageSpeedMps * 3.6
+        let met: Double
+        switch kmh {
+        case ..<16: met = 4
+        case ..<19: met = 6
+        case ..<22: met = 8
+        case ..<25: met = 10
+        case ..<30: met = 11.8
+        default: met = 14
         }
-        return (gain, loss)
+        return Int((met * 70 * hours).rounded())
+    }
+
+    /// 시작 → 종료 시각 표기.
+    private var startEndText: String {
+        let end = record.startedAt.addingTimeInterval(record.totalElapsed)
+        let f = DateFormatter(); f.dateFormat = "HH:mm"
+        return "\(f.string(from: record.startedAt)) → \(f.string(from: end))"
+    }
+
+    /// 트랙에서 고도·경사·시계열을 1회 계산한다(큰 트랙 대비 렌더마다 재계산 방지).
+    private func computeDerived(_ track: [RideRecord.Coordinate]) -> TrackDerived {
+        var d = TrackDerived()
+        guard track.count > 1 else { return d }
+        let eles = track.compactMap { $0.ele }
+        if eles.count > 1 {
+            d.minEle = eles.min(); d.maxEle = eles.max()
+            var last = eles[0]
+            for e in eles.dropFirst() {
+                let dd = e - last
+                if dd > 0.5 { d.gain += dd; last = e }
+                else if dd < -0.5 { d.loss += -dd; last = e }
+            }
+        }
+        let step = max(1, track.count / 250)   // 차트는 ~250점으로 다운샘플
+        var horiz = 0.0, winDist = 0.0, winRise = 0.0, maxG = 0.0
+        var prev: CLLocation?, prevEle: Double?
+        for (i, p) in track.enumerated() {
+            let loc = CLLocation(latitude: p.lat, longitude: p.lon)
+            if let pr = prev {
+                let dd = loc.distance(from: pr)
+                horiz += dd; winDist += dd
+                if let pe = prevEle, let e = p.ele { winRise += (e - pe) }
+                if winDist >= 30 {
+                    let g = winRise / winDist * 100
+                    if g > maxG { maxG = g }
+                    winDist = 0; winRise = 0
+                }
+            }
+            prev = loc
+            if p.ele != nil { prevEle = p.ele }
+            if i % step == 0 {
+                let km = horiz / 1000
+                if let hr = p.hr, hr > 0 { d.hrSeries.append(SeriesPoint(km: km, value: Double(hr))) }
+                if let sp = p.speed, sp >= 0 { d.speedSeries.append(SeriesPoint(km: km, value: sp * 3.6)) }
+            }
+        }
+        if horiz > 0, d.gain > 0 { d.avgGrade = d.gain / horiz * 100 }
+        if maxG > 0 { d.maxGrade = maxG }
+        return d
     }
 
     var body: some View {
@@ -633,15 +717,25 @@ struct RideDetailView: View {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         stat("거리", String(format: "%.2f %@", unit.distance(fromMeters: record.distanceMeters), unit.distanceLabel), Theme.gold)
                         stat("라이딩 시간", formatDuration(record.duration), Theme.gold)
+                        stat("정지 시간", formatDuration(stoppedSeconds), Theme.value)
+                        stat("총 경과", formatDuration(record.totalElapsed), Theme.value)
                         stat("평균 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.averageSpeedMps), unit.speedLabel), Theme.value)
                         stat("최고 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.maxSpeedMps), unit.speedLabel), Theme.blue)
-                        stat("최대 심박", record.maxHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
+                        stat("평균 페이스", avgPace ?? "–", Theme.value)
+                        stat("추정 칼로리", estimatedKcal.map { "\($0) kcal" } ?? "–", Theme.gold)
                         stat("평균 심박", record.avgHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
+                        stat("최대 심박", record.maxHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
                         stat("평균 케이던스", record.avgCadence.map { "\($0) rpm" } ?? "–", Theme.value)
-                        stat("등반", elevation.map { String(format: "%.0f m", $0.gain) } ?? "–", Theme.green)
-                        stat("하강", elevation.map { String(format: "%.0f m", $0.loss) } ?? "–", Theme.value)
-                        stat("총 경과", formatDuration(record.totalElapsed), Theme.value)
+                        stat("최고 케이던스", record.maxCadence.map { "\($0) rpm" } ?? "–", Theme.value)
+                        stat("등반", derived.hasElevation ? String(format: "%.0f m", derived.gain) : "–", Theme.green)
+                        stat("하강", derived.hasElevation ? String(format: "%.0f m", derived.loss) : "–", Theme.value)
+                        stat("최고 고도", derived.maxEle.map { String(format: "%.0f m", $0) } ?? "–", Theme.value)
+                        stat("최저 고도", derived.minEle.map { String(format: "%.0f m", $0) } ?? "–", Theme.value)
+                        stat("평균 경사", derived.avgGrade.map { String(format: "%.1f%%", $0) } ?? "–", Theme.value)
+                        stat("최대 경사", derived.maxGrade.map { String(format: "%.1f%%", $0) } ?? "–", Theme.value)
                     }
+                    Text("시간대  \(startEndText)")
+                        .font(.caption).foregroundColor(.secondary)
                 }
                 .padding(.horizontal)
 
@@ -655,6 +749,14 @@ struct RideDetailView: View {
                     .font(.subheadline).foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
+                }
+
+                // 심박 추이 / 속도 추이 (거리축, 트랙 시계열)
+                if !derived.hrSeries.isEmpty {
+                    chartCard("심박 추이 (bpm)", derived.hrSeries, Theme.red)
+                }
+                if !derived.speedSeries.isEmpty {
+                    chartCard("속도 추이 (km/h)", derived.speedSeries, Theme.blue)
                 }
 
                 if record.trackCount > 1 { mapCourseCard }
@@ -726,6 +828,7 @@ struct RideDetailView: View {
             guard loadedTrack.isEmpty, record.trackCount > 0 else { return }
             session.store.loadTrack(for: record) { t in
                 loadedTrack = t
+                derived = computeDerived(t)
                 var rec = record; rec.track = t
                 gpxURL = GPXExporter.writeTempGPX(rec)
             }
@@ -833,6 +936,24 @@ struct RideDetailView: View {
         }
         .frame(maxWidth: .infinity).padding(.vertical, 14)
         .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// 거리축 라인 차트 카드(심박·속도 추이).
+    private func chartCard(_ title: String, _ points: [SeriesPoint], _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader(title)
+            Chart(points) { p in
+                LineMark(x: .value("거리(km)", p.km), y: .value("값", p.value))
+                    .foregroundStyle(color)
+                    .interpolationMethod(.monotone)
+            }
+            .chartXAxis { AxisMarks(position: .bottom) }
+            .frame(height: 150)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .padding(.horizontal)
     }
 
     /// 상세 화면 섹션 헤더(좌측 정렬, 작은 대문자 느낌).
