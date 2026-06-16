@@ -228,8 +228,10 @@ struct DashboardView: View {
             let fontSize = fitted * 0.82   // 누적 거리 행은 다른 행보다 약간 작게
 
             HStack(spacing: 0) {
+                // Month 만 아래에 소수점 2자리 작은 숫자(라이브 누적)를 함께 표시.
                 MetricCell(label: "Month", value: month, rowIndex: 6,
-                           unit: unit, fixedValueFontSize: fontSize)
+                           subvalue: "\(fmt(session.thisMonthDistance, 2)) \(unit)",
+                           fixedValueFontSize: fontSize)
                 MetricCell(label: "Year", value: year, rowIndex: 6,
                            unit: unit, fixedValueFontSize: fontSize)
                 MetricCell(label: "Total", value: total, rowIndex: 6,
