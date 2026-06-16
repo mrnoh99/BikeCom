@@ -622,7 +622,7 @@ struct RideDetailView: View {
     /// 정지 시간(총 경과 − 라이딩 시간).
     private var stoppedSeconds: TimeInterval { max(0, record.totalElapsed - record.duration) }
 
-    /// 추정 소모 칼로리(체중 70kg 가정, 평균 속도 MET). 어디까지나 근사값.
+    /// 추정 소모 칼로리(체중 80kg 가정, 평균 속도 MET). 어디까지나 근사값.
     private var estimatedKcal: Int? {
         let hours = record.duration / 3600
         guard hours > 0 else { return nil }
@@ -636,7 +636,7 @@ struct RideDetailView: View {
         case ..<30: met = 11.8
         default: met = 14
         }
-        return Int((met * 70 * hours).rounded())
+        return Int((met * 80 * hours).rounded())
     }
 
     /// 시작 → 종료 시각 표기.
