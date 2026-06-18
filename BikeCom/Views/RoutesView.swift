@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import CoreLocation
 import UIKit
 import Charts
 import UniformTypeIdentifiers
