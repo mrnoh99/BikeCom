@@ -640,6 +640,30 @@ struct RideDetailView: View {
         return Int((met * 80 * hours).rounded())
     }
 
+    /// 요약 통계 셀(라벨·값·색). ViewBuilder 10개 제한을 피하려 배열+ForEach 로 그린다.
+    private var statItems: [(String, String, Color)] {
+        [
+            ("거리", String(format: "%.2f %@", unit.distance(fromMeters: record.distanceMeters), unit.distanceLabel), Theme.gold),
+            ("라이딩 시간", formatDuration(record.duration), Theme.gold),
+            ("정지 시간", formatDuration(stoppedSeconds), Theme.value),
+            ("총 경과", formatDuration(record.totalElapsed), Theme.value),
+            ("평균 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.averageSpeedMps), unit.speedLabel), Theme.value),
+            ("최고 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.maxSpeedMps), unit.speedLabel), Theme.blue),
+            ("평균 페이스", avgPace ?? "–", Theme.value),
+            ("추정 칼로리", estimatedKcal.map { "\($0) kcal" } ?? "–", Theme.gold),
+            ("평균 심박", record.avgHeartRate.map { "\($0) bpm" } ?? "–", Theme.red),
+            ("최대 심박", record.maxHeartRate.map { "\($0) bpm" } ?? "–", Theme.red),
+            ("평균 케이던스", record.avgCadence.map { "\($0) rpm" } ?? "–", Theme.value),
+            ("최고 케이던스", record.maxCadence.map { "\($0) rpm" } ?? "–", Theme.value),
+            ("등반", derived.hasElevation ? String(format: "%.0f m", derived.gain) : "–", Theme.green),
+            ("하강", derived.hasElevation ? String(format: "%.0f m", derived.loss) : "–", Theme.value),
+            ("최고 고도", derived.maxEle.map { String(format: "%.0f m", $0) } ?? "–", Theme.value),
+            ("최저 고도", derived.minEle.map { String(format: "%.0f m", $0) } ?? "–", Theme.value),
+            ("평균 경사", derived.avgGrade.map { String(format: "%.1f%%", $0) } ?? "–", Theme.value),
+            ("최대 경사", derived.maxGrade.map { String(format: "%.1f%%", $0) } ?? "–", Theme.value),
+        ]
+    }
+
     /// 시작 → 종료 시각 표기.
     private var startEndText: String {
         let end = record.startedAt.addingTimeInterval(record.totalElapsed)
@@ -716,24 +740,9 @@ struct RideDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     sectionHeader("요약 통계")
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        stat("거리", String(format: "%.2f %@", unit.distance(fromMeters: record.distanceMeters), unit.distanceLabel), Theme.gold)
-                        stat("라이딩 시간", formatDuration(record.duration), Theme.gold)
-                        stat("정지 시간", formatDuration(stoppedSeconds), Theme.value)
-                        stat("총 경과", formatDuration(record.totalElapsed), Theme.value)
-                        stat("평균 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.averageSpeedMps), unit.speedLabel), Theme.value)
-                        stat("최고 속도", String(format: "%.1f %@", unit.speed(fromMetersPerSecond: record.maxSpeedMps), unit.speedLabel), Theme.blue)
-                        stat("평균 페이스", avgPace ?? "–", Theme.value)
-                        stat("추정 칼로리", estimatedKcal.map { "\($0) kcal" } ?? "–", Theme.gold)
-                        stat("평균 심박", record.avgHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
-                        stat("최대 심박", record.maxHeartRate.map { "\($0) bpm" } ?? "–", Theme.red)
-                        stat("평균 케이던스", record.avgCadence.map { "\($0) rpm" } ?? "–", Theme.value)
-                        stat("최고 케이던스", record.maxCadence.map { "\($0) rpm" } ?? "–", Theme.value)
-                        stat("등반", derived.hasElevation ? String(format: "%.0f m", derived.gain) : "–", Theme.green)
-                        stat("하강", derived.hasElevation ? String(format: "%.0f m", derived.loss) : "–", Theme.value)
-                        stat("최고 고도", derived.maxEle.map { String(format: "%.0f m", $0) } ?? "–", Theme.value)
-                        stat("최저 고도", derived.minEle.map { String(format: "%.0f m", $0) } ?? "–", Theme.value)
-                        stat("평균 경사", derived.avgGrade.map { String(format: "%.1f%%", $0) } ?? "–", Theme.value)
-                        stat("최대 경사", derived.maxGrade.map { String(format: "%.1f%%", $0) } ?? "–", Theme.value)
+                        ForEach(statItems.indices, id: \.self) { i in
+                            stat(statItems[i].0, statItems[i].1, statItems[i].2)
+                        }
                     }
                     Text("시간대  \(startEndText)")
                         .font(.caption).foregroundColor(.secondary)
