@@ -10,17 +10,21 @@ struct MapTabView: View {
     @State private var region = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780),
         span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
-    @State private var showPastCourses = false
+    @State private var showSettings = false
     @State private var recenterToken = 0
     /// 사용자가 직접 켠 내비게이션 모드(코스 따라가기와 무관). 영속 저장.
     @AppStorage("map.navMode") private var navManual = false
+    /// 지도 제공자(Apple/Google/카카오). 설정에서 변경.
+    @AppStorage("map.provider") private var providerRaw = MapProvider.apple.rawValue
+    private var provider: MapProvider { MapProvider(rawValue: providerRaw) ?? .apple }
 
     /// 코스를 따라가는 중이거나, 사용자가 수동으로 내비 모드를 켜면 내비게이션 표시.
     private var navigating: Bool { navManual || !session.followCourseTrack.isEmpty }
 
     var body: some View {
         ZStack(alignment: .top) {
-            LiveMap(track: session.location.track,
+            LiveMap(provider: provider,
+                    track: session.location.track,
                     userLocation: session.location.lastLocation?.coordinate,
                     courseTrack: session.followCourseTrack,
                     navigationMode: navigating,
@@ -80,8 +84,8 @@ struct MapTabView: View {
                             .background(.ultraThinMaterial, in: Capsule())
                     }
                 }
-                Button { showPastCourses = true } label: {
-                    Label("코스", systemImage: "map")
+                Button { showSettings = true } label: {
+                    Label("설정", systemImage: "gearshape")
                         .font(.system(size: 14, weight: .semibold))
                         .padding(.horizontal, 14).padding(.vertical, 10)
                         .background(.ultraThinMaterial, in: Capsule())
@@ -89,11 +93,8 @@ struct MapTabView: View {
             }
             .padding(16)
         }
-        .sheet(isPresented: $showPastCourses) {
-            PastCoursesMapView(onFollow: { course in
-                session.setFollowCourse(course)
-                showPastCourses = false
-            })
+        .sheet(isPresented: $showSettings) {
+            MapSettingsSheet().environmentObject(session)
         }
         .onAppear { session.restoreFollowCourseIfNeeded() }
         .navigationTitle("Map")
@@ -230,8 +231,9 @@ struct RouteMap: UIViewRepresentable {
     }
 }
 
-/// 라이브 지도: Google(가능 시) 또는 Apple(`RouteMap`).
+/// 라이브 지도: 선택한 제공자(Apple/Google/카카오 자전거). 키가 없으면 Apple 폴백.
 struct LiveMap: View {
+    var provider: MapProvider = .apple
     let track: [CLLocationCoordinate2D]
     let userLocation: CLLocationCoordinate2D?
     var courseTrack: [CLLocationCoordinate2D] = []
@@ -240,15 +242,31 @@ struct LiveMap: View {
     @Binding var region: MKCoordinateRegion
 
     var body: some View {
-        #if canImport(GoogleMaps)
-        if GMapsConfig.hasKey {
-            GoogleLiveMap(track: track, userLocation: userLocation, courseTrack: courseTrack, navigationMode: navigationMode, recenterToken: recenterToken)
-        } else {
-            RouteMap(track: track, userLocation: userLocation, region: $region, courseTrack: courseTrack, navigationMode: navigationMode, recenterToken: recenterToken)
+        switch provider {
+        case .kakao:
+            if KakaoConfig.hasKey {
+                KakaoWebMap(track: track, userLocation: userLocation, courseTrack: courseTrack)
+            } else {
+                appleMap
+            }
+        case .google:
+            #if canImport(GoogleMaps)
+            if GMapsConfig.hasKey {
+                GoogleLiveMap(track: track, userLocation: userLocation, courseTrack: courseTrack, navigationMode: navigationMode, recenterToken: recenterToken)
+            } else {
+                appleMap
+            }
+            #else
+            appleMap
+            #endif
+        case .apple:
+            appleMap
         }
-        #else
-        RouteMap(track: track, userLocation: userLocation, region: $region, courseTrack: courseTrack, navigationMode: navigationMode, recenterToken: recenterToken)
-        #endif
+    }
+
+    private var appleMap: some View {
+        RouteMap(track: track, userLocation: userLocation, region: $region,
+                 courseTrack: courseTrack, navigationMode: navigationMode, recenterToken: recenterToken)
     }
 }
 
