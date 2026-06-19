@@ -245,7 +245,8 @@ struct LiveMap: View {
         switch provider {
         case .kakao:
             if KakaoConfig.hasKey {
-                KakaoWebMap(track: track, userLocation: userLocation, courseTrack: courseTrack)
+                KakaoWebMap(track: track, userLocation: userLocation, courseTrack: courseTrack,
+                            navigationMode: navigationMode, recenterToken: recenterToken)
             } else {
                 appleMap
             }
