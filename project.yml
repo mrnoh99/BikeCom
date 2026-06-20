@@ -89,6 +89,9 @@ targets:
         # 없으면 iOS 가 구형 화면 비율로 letterbox → 위아래 검은 여백 발생.
         UILaunchStoryboardName: LaunchScreen
         GMSApiKey: ""
+        # 카카오 자전거 맵용 JavaScript 키. Kakao 개발자 콘솔에서 발급 후 입력하고,
+        # Web 플랫폼 사이트 도메인에 WKWebView baseURL(기본 https://localhost)을 등록할 것.
+        KakaoJavaScriptAppKey: ""
         NSCalendarsFullAccessUsageDescription: "라이딩 종료 시 요약을 캘린더에 기록합니다."
         NSHealthShareUsageDescription: "누적 사이클링 거리와 SpO2를 표시하고, 운동 기록을 가져옵니다."
         NSHealthUpdateUsageDescription: "라이딩을 Apple 건강 앱에 저장합니다."
