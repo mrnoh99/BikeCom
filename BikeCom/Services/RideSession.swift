@@ -463,9 +463,12 @@ final class RideSession: ObservableObject {
     func autoSelectCommuteCourse() {
         guard state == .idle, !userPickedCourse, let loc = location.lastLocation else { return }
         let cal = Calendar.current
-        let minutes = cal.component(.hour, from: Date()) * 60 + cal.component(.minute, from: Date())
-        let morning = (6 * 60 ... 7 * 60).contains(minutes)              // 06:00–07:00
-        let evening = (16 * 60 + 30 ... 18 * 60).contains(minutes)       // 16:30–18:00
+        let now = Date()
+        let weekday = cal.component(.weekday, from: now)                 // 1=일 … 7=토
+        guard (2 ... 6).contains(weekday) else { return }               // 평일(월~금)만
+        let minutes = cal.component(.hour, from: now) * 60 + cal.component(.minute, from: now)
+        let morning = (6 * 60 ... 7 * 60).contains(minutes)             // 06:00–07:00
+        let evening = (16 * 60 + 30 ... 18 * 60).contains(minutes)      // 16:30–18:00
         guard morning || evening else { return }
         Task { @MainActor [weak self] in
             guard let self, !self.userPickedCourse else { return }
