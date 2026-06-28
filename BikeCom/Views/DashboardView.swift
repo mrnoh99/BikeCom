@@ -104,7 +104,7 @@ struct DashboardView: View {
     private func courseMenu(_ layout: DeviceLayout.Dashboard) -> some View {
         Menu {
             ForEach(session.courses, id: \.self) { course in
-                Button(course) { session.routeName = course }
+                Button(course) { session.pickCourse(course) }   // 직접 선택 → 자동 출근/퇴근 억제
             }
             Divider()
             Button("코스 추가…", systemImage: "plus") { newCourseName = ""; showAddCourse = true }

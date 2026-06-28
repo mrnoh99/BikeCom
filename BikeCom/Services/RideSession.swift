@@ -448,6 +448,36 @@ final class RideSession: ObservableObject {
     @Published var routeName: String = UserDefaults.standard.string(forKey: "bike.routeName") ?? "1.라이딩"
     @Published var bikeName: String = UserDefaults.standard.string(forKey: "bike.bikeName") ?? "내 자전거"
 
+    /// 사용자가 코스를 직접 선택했는지(자동 출근/퇴근 선택을 억제). 라이딩 종료 시 해제.
+    private var userPickedCourse = false
+
+    /// 사용자가 코스를 직접 고른다(자동 선택 억제).
+    func pickCourse(_ name: String) {
+        routeName = name
+        userPickedCourse = true
+    }
+
+    /// 시작 시간 + 현재 위치로 출근/퇴근 코스를 자동 선택한다.
+    /// 06:00–07:00 & 안양 → "출근", 16:30–18:00 & 수원 → "퇴근".
+    /// 사용자가 직접 고른 경우(`userPickedCourse`)나 라이딩 중이면 건드리지 않는다.
+    func autoSelectCommuteCourse() {
+        guard state == .idle, !userPickedCourse, let loc = location.lastLocation else { return }
+        let cal = Calendar.current
+        let minutes = cal.component(.hour, from: Date()) * 60 + cal.component(.minute, from: Date())
+        let morning = (6 * 60 ... 7 * 60).contains(minutes)              // 06:00–07:00
+        let evening = (16 * 60 + 30 ... 18 * 60).contains(minutes)       // 16:30–18:00
+        guard morning || evening else { return }
+        Task { @MainActor [weak self] in
+            guard let self, !self.userPickedCourse else { return }
+            let place = await PlaceNameCache.shared.name(for: loc.coordinate)
+            if morning, place.contains("안양"), self.courses.contains("출근") {
+                self.routeName = "출근"
+            } else if evening, place.contains("수원"), self.courses.contains("퇴근") {
+                self.routeName = "퇴근"
+            }
+        }
+    }
+
     /// 속도 센서 휠 둘레(미터). 폰 직결 BLE 센서의 속도 계산에 사용된다.
     @Published var wheelCircumferenceMeters: Double = (UserDefaults.standard.object(forKey: "bike.wheelCircumference") as? Double) ?? 2.105 {
         didSet {
@@ -729,6 +759,7 @@ final class RideSession: ObservableObject {
         case .idle:
             resetRide()
             startedAt = Date()
+            autoSelectCommuteCourse()   // 시간·위치로 출근/퇴근 자동 선택(아직 idle 상태)
             location.startRecording()
             watch.startWatchWorkout()   // 워치 워크아웃(심박·속도·케이던스) 시작
             state = .running
@@ -752,6 +783,7 @@ final class RideSession: ObservableObject {
             state = .idle
             return
         }
+        userPickedCourse = false   // 다음 라이딩은 다시 자동 선택 가능
         location.stopRecording()
         watch.stopWatchWorkout()   // 워치 워크아웃 세션 종료(저장은 폰이 담당)
         state = .idle

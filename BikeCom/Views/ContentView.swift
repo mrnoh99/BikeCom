@@ -15,9 +15,15 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onAppear { session.refreshScreenAwake() }
+        .onAppear {
+            session.refreshScreenAwake()
+            session.autoSelectCommuteCourse()   // 시간·위치로 출근/퇴근 기본 선택
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { session.refreshScreenAwake() }
+            if phase == .active {
+                session.refreshScreenAwake()
+                session.autoSelectCommuteCourse()
+            }
         }
     }
 }
