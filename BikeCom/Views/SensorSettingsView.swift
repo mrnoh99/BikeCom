@@ -117,7 +117,7 @@ struct SensorSettingsView: View {
         } header: {
             Text("속도 · 케이던스 · 심박")
         } footer: {
-            Text("대시보드 📱/⌚ 버튼으로도 전환할 수 있습니다. 선택한 경로만 속도·케이던스·Moving time에 사용됩니다. 심박은 Apple Watch에서 측정합니다.")
+            Text("대시보드 📱/⌚ 버튼으로도 전환할 수 있습니다. 선택한 경로만 속도·케이던스·Moving time에 사용됩니다. 심박은 Apple Watch(페어링된 폰)를 우선 사용하고, 없으면 아래 폰 BLE 심박 센서로 대체됩니다.")
         }
 
         Section {
@@ -126,7 +126,8 @@ struct SensorSettingsView: View {
                     statusRow("입력", value: session.sensorMode == .phone ? "폰 BLE" : "Apple Watch", active: true)
                     statusRow("속도", value: activeSpeedText, active: session.speedSensorConnected)
                     statusRow("케이던스", value: activeCadenceText, active: session.cadenceSensorConnected)
-                    statusRow("심박", value: heartRateText, active: session.watch.heartRateConnected)
+                    statusRow("심박", value: heartRateText,
+                              active: session.watch.heartRateConnected || session.bleHeartRate.connected)
                 }
             }
         } header: {
@@ -136,6 +137,8 @@ struct SensorSettingsView: View {
         SensorWatchConnectionSection(watch: session.watch)
 
         SensorBLESection(ble: session.ble, unit: session.unit, sensorMode: session.sensorMode)
+
+        SensorBLEHeartRateSection(bleHR: session.bleHeartRate)
 
         Section {
             Stepper(value: $session.wheelCircumferenceMeters, in: 1.000...2.500, step: 0.005) {
@@ -207,8 +210,13 @@ struct SensorSettingsView: View {
     }
 
     private var heartRateText: String {
-        guard session.watch.heartRateConnected, let bpm = session.watch.heartRateBPM else { return "수신 대기" }
-        return "\(bpm) bpm"
+        if session.watch.heartRateConnected, let bpm = session.watch.heartRateBPM {
+            return "\(bpm) bpm (Watch)"
+        }
+        if session.bleHeartRate.connected {
+            return "\(session.bleHeartRate.bpm) bpm (BLE)"
+        }
+        return "수신 대기"
     }
 
     private func statusRow(_ label: String, value: String, active: Bool) -> some View {
@@ -349,6 +357,60 @@ private struct SensorBLESection: View {
     private var cadenceText: String {
         guard ble.cadenceConnected else { return "수신 대기" }
         return "\(ble.cadenceRPM) rpm"
+    }
+
+    private func row(_ label: String, value: String, active: Bool) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value).foregroundColor(active ? Theme.green : .secondary)
+        }
+    }
+}
+
+/// 폰 BLE 심박 센서 — 표준 BLE 심박 스트랩뿐 아니라, 페어링되지 않은 다른 아이폰의
+/// Apple Watch(BikeCom 워치 앱이 `HeartRateBroadcaster` 로 브로드캐스트 중)도 여기서
+/// 스캔·연결해 심박을 받을 수 있다.
+private struct SensorBLEHeartRateSection: View {
+    @ObservedObject var bleHR: BLEHeartRateManager
+
+    var body: some View {
+        Section {
+            if let name = bleHR.connectedName {
+                row("연결됨", value: name, active: true)
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    row("수신", value: bleHR.connected ? "\(bleHR.bpm) bpm" : "수신 대기", active: bleHR.connected)
+                }
+                Button(role: .destructive) { bleHR.forget() } label: {
+                    Label("연결 해제·저장 삭제", systemImage: "xmark.circle")
+                }
+            } else if bleHR.scanning {
+                Button { bleHR.stopScan() } label: {
+                    Label("스캔 중지", systemImage: "stop.circle")
+                }
+                ForEach(bleHR.discovered) { dev in
+                    Button { bleHR.connect(dev.id) } label: {
+                        HStack {
+                            Label(dev.name, systemImage: "heart.fill")
+                            Spacer()
+                            Image(systemName: "link")
+                        }
+                    }
+                }
+                if bleHR.discovered.isEmpty {
+                    Text("주변 심박 센서 검색 중…").foregroundColor(.secondary)
+                }
+            } else {
+                Button { bleHR.startScan() } label: {
+                    Label("심박 센서 스캔", systemImage: "magnifyingglass")
+                }
+                .disabled(!bleHR.poweredOn)
+            }
+        } header: {
+            Text("심박 센서(폰 BLE)")
+        } footer: {
+            Text("표준 BLE 심박 스트랩 또는 페어링되지 않은 다른 아이폰의 Apple Watch(BikeCom 워치 앱 실행 중) 브로드캐스트를 직접 수신합니다. Apple Watch가 이 폰과 페어링돼 있으면(WatchConnectivity) 그쪽을 우선 사용하고, 여기 연결은 보조/대체 경로로만 쓰입니다.")
+        }
     }
 
     private func row(_ label: String, value: String, active: Bool) -> some View {

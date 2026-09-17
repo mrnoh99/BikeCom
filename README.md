@@ -28,6 +28,12 @@
 - **속도·케이던스·심박수**: **애플워치**가 기본 — 워치에 페어링한 BLE 센서를 워치 워크아웃의
   HealthKit 으로 읽어 폰에 중계. 우선순위는 **워치 > 폰 BLE > GPS**.
 - **폴백**: 워치가 없으면 폰이 직접 BLE(CSC 0x1816 속도·케이던스, 0x180D 심박)로 측정.
+- **심박 브로드캐스트(페어링 불필요)**: 워치의 심박은 `WCSession`(WatchConnectivity)으로 **이 워치와
+  OS 페어링된 폰에만** 전달되는 게 원칙이다. 다른 아이폰(예: 같이 타는 사람의 폰)이 페어링 없이 받게
+  하려면, 워치가 `HeartRateBroadcaster` 로 표준 BLE 심박 서비스(`0x180D`)를 광고한다 — 흔한 BLE
+  심박 스트랩처럼 동작하는 셈이라, 근처 어떤 아이폰의 BikeCom(⚙️ → 장치 → **심박 센서(폰 BLE)**)이든
+  스캔·연결해 받을 수 있다. 폰은 자기 자신과 페어링된 워치가 있으면 WCSession 값을 우선하고,
+  없을 때만 이 BLE 값으로 대체한다(`BLEHeartRateManager`).
 - **누적 거리**: Apple **건강** 앱의 사이클링 거리(`distanceCycling`) 합 — 이번달/올해/총.
   (앱 설치 전·다른 기기 기록까지 포함, 재설치해도 유지. 권한 미허용 시 로컬 기록으로 폴백.)
 - **산소포화도(SpO2)**: 워치 주행화면의 **`SpO2 측정` 버튼**(휴식 중 사용) → 탭 이후 들어오는 새
@@ -83,7 +89,9 @@ HKWorkout 을 저장한다(둘 중 하나만 저장해 이중 계산 방지).
 | Battery | `0x180F` | Battery Level `0x2A19` |
 
 스크린샷의 Wahoo / CYCPLUS / Magene 등 대부분의 시판 속도·케이던스 센서가 이 표준을 따른다.
-(심박수는 애플워치를 기본으로 사용하며, BLE 심박 스트랩은 선택 보조 수단이다.)
+(심박수는 애플워치를 기본으로 사용하며, BLE 심박 스트랩·워치 브로드캐스트는 선택 보조 수단이다.)
+워치도 `HeartRateBroadcaster` 로 이 Heart Rate 서비스(`0x180D`/`0x2A37`)를 직접 광고하므로,
+폰의 `BLEHeartRateManager` 로 스트랩과 똑같이 스캔·연결할 수 있다(페어링 불필요).
 
 ## 빌드
 
@@ -109,6 +117,7 @@ BikeCom/                       # 아이폰 앱
   Design/     Theme.swift                 # 색상·폰트 토큰
   Models/     Units.swift · RideRecord.swift(+RideStore)
   Services/   BluetoothManager.swift      # CoreBluetooth: CSC(속도·케이던스) 파싱 — 폴백
+              BLEHeartRateManager.swift   # CoreBluetooth: 표준 HR(0x180D) 스캔 — 스트랩/미페어링 워치 브로드캐스트 수신
               LocationManager.swift       # CoreLocation: GPS 속도·거리·트랙
               WatchSensorManager.swift    # WCSession: 워치 심박·속도·케이던스·SpO2 수신
               HealthStore.swift           # HealthKit: 누적 거리·SpO2 + 워크아웃(거리+경로) 저장
@@ -126,6 +135,7 @@ BikeComWatch/                  # 애플워치 앱
   BikeComWatchApp.swift          # @main + WKApplicationDelegate(handle workout)
   WatchContentView.swift              # 실시간 심박 화면 + 시작/정지
   WorkoutManager.swift                # HKWorkoutSession·HKLiveWorkoutBuilder(심박·속도·케이던스) → WCSession 전송
+  HeartRateBroadcaster.swift          # CoreBluetooth(peripheral): 심박을 표준 BLE HR(0x180D)로 광고(페어링 불필요 수신용)
   Info.plist · *.entitlements · Assets.xcassets
 ```
 

@@ -47,8 +47,9 @@ final class RideSession: ObservableObject {
     // 하위 서비스
     let location = LocationManager()
     let store = RideStore()
-    let watch = WatchSensorManager()   // 애플워치 심박·속도·케이던스(중계)
+    let watch = WatchSensorManager()   // 애플워치 심박·속도·케이던스(중계, 페어링된 폰 전용)
     let ble = BLECSCManager()          // 폰 직결 BLE 속도·케이던스(CSC) 센서
+    let bleHeartRate = BLEHeartRateManager()   // 폰 직결 BLE 심박(스트랩 또는 미페어링 워치 브로드캐스트)
     let health = HealthStore()          // Apple Health 누적 거리 + 폰 단독 워크아웃 저장
     let calendarLogger = CalendarLogger()   // Done 시 캘린더에 운동 요약 기록
     let healthImporter = HealthWorkoutImporter()   // 건강의 사이클링 워크아웃 가져오기
@@ -642,8 +643,17 @@ final class RideSession: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // 심박: Apple Watch(WCSession, 페어링된 폰) 우선 — 없으면 폰 BLE(스트랩 또는
+        // 미페어링 워치 브로드캐스트)로 대체.
         watch.$heartRateBPM
             .sink { [weak self] bpm in self?.ingestHeartRate(bpm) }
+            .store(in: &cancellables)
+
+        bleHeartRate.$bpm
+            .sink { [weak self] bpm in
+                guard let self, !self.watch.heartRateConnected else { return }
+                self.ingestHeartRate(bpm > 0 ? bpm : nil)
+            }
             .store(in: &cancellables)
 
         // store 만 상위로 전달(Routes·More 목록 갱신). watch/ble/health 는 각 화면에서
