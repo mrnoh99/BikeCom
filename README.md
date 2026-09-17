@@ -95,13 +95,19 @@ HKWorkout 을 저장한다(둘 중 하나만 저장해 이중 계산 방지).
 
 ## 빌드
 
-이 저장소는 `.xcodeproj` 대신 **XcodeGen** `project.yml` 로 프로젝트를 정의한다.
+프로젝트 정의는 **XcodeGen** `project.yml` 이 원본이지만, 생성된 **`BikeCom.xcodeproj` 도 저장소에
+커밋**돼 있다. 그냥 pull 받아서 xcodegen 설치 없이 바로 열고 빌드할 수 있다:
 
 ```bash
-brew install xcodegen      # 최초 1회
-./scripts/build.sh         # xcodegen + (필요 시 watchOS 런타임) + 빌드
-open BikeCom.xcodeproj # Xcode 에서 실 기기로 실행
+git pull
+open BikeCom.xcodeproj   # Xcode 에서 실 기기로 실행
+# 또는: ./scripts/build.sh   # (필요 시 watchOS 런타임) + 빌드
 ```
+
+`project.yml` 을 직접 수정했다면(새 파일 추가, 빌드 설정 변경 등) `BikeCom.xcodeproj` 를 다시
+생성해야 한다. `brew install xcodegen` 후 `xcodegen generate` 를 실행하거나, `project.yml` 변경을
+푸시하면 **`.github/workflows/xcodegen.yml`** 이 macOS 러너에서 자동으로 재생성해 커밋해준다
+(수동 실행: Actions 탭 → "Regenerate Xcode project" → Run workflow).
 
 > 워치 컴패니언 앱이 포함되어 **watchOS 시뮬레이터 런타임**이 필요하다.
 > 없으면 `xcodebuild -downloadPlatform watchOS` 로 설치하거나 `./scripts/build.sh` 가 자동 시도한다.

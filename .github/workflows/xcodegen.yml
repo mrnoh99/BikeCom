@@ -1,0 +1,38 @@
+name: Regenerate Xcode project
+
+# project.yml(XcodeGen 소스)이 바뀌면 macOS 러너에서 `xcodegen generate` 를 실행해
+# 저장소에 커밋된 BikeCom.xcodeproj 를 최신 상태로 갱신한다.
+# 이렇게 하면 이 저장소를 pull 받는 사람은 xcodegen 을 설치하지 않고도
+# `open BikeCom.xcodeproj` 로 바로 빌드할 수 있다.
+on:
+  push:
+    paths:
+      - project.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  xcodegen:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Commit regenerated project (if changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add BikeCom.xcodeproj
+          if git diff --cached --quiet; then
+            echo "BikeCom.xcodeproj 변경 없음"
+          else
+            git commit -m "chore: regenerate BikeCom.xcodeproj via xcodegen [skip ci]"
+            git push origin HEAD:"${GITHUB_REF_NAME}"
+          fi
