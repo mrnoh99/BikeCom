@@ -55,7 +55,7 @@ struct SettingsExtrasView: View {
                 Text("라이딩 중 워치 앱이 watchOS 에 의해 강제 종료된 뒤 자동 복귀한 누적 횟수입니다(워치가 보고). 장시간 라이딩에서 1~2회는 정상 메모리 관리 범위입니다.")
             }
             Section {
-                HStack { Text("버전"); Spacer(); Text("1.0").foregroundColor(.secondary) }
+                HStack { Text("버전"); Spacer(); Text(appVersionText).foregroundColor(.secondary) }
                 HStack {
                     Text("개발")
                     Spacer()
@@ -71,6 +71,14 @@ struct SettingsExtrasView: View {
         .navigationTitle("통계")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { session.refreshDataStats() }
+    }
+
+    /// "v1.0 build 2" — 앱 번들의 마케팅 버전(CFBundleShortVersionString)과
+    /// 빌드 번호(CFBundleVersion)를 그대로 읽어 표시(project.yml 이 유일한 값 소스).
+    private var appVersionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "v\(version) build \(build)"
     }
 
     @ViewBuilder private var dataSourceSection: some View {

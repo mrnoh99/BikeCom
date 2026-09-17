@@ -19,9 +19,11 @@
 		362514342630FB60BDAC3AA0 /* BikeComApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F868194B765D827FFA8A3EA5 /* BikeComApp.swift */; };
 		3B15E15EF771902BFE2D72C9 /* CalendarLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 772EE0BC899036E94E734D23 /* CalendarLogger.swift */; };
 		41850672E9DB661BE75E6496 /* DeviceLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E302911D66323362236F1D /* DeviceLayout.swift */; };
+		430F6FDD97C831BB56ED10AF /* NMapsGeometry in Frameworks */ = {isa = PBXBuildFile; productRef = 180CA1104996ADE925372CAE /* NMapsGeometry */; };
 		446FAED89CC1BDEFEB4AA3AF /* RideIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DE4469262FA175D3B74892 /* RideIntents.swift */; };
 		452E14DE099ACE1FE1F8CA91 /* WorkoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D835511AB6EDC0F5060D6F /* WorkoutManager.swift */; };
 		48E088E950A47BE02DD6CC2D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 28227D91B57B59C0894C652E /* Assets.xcassets */; };
+		49DEF05DC1756E4C616A0C0F /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4E100D8FF9E8DA11CFDD191F /* ZIPFoundation */; };
 		4D4A23EB99D95C4406476314 /* RoutesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F42C4588A5BABE8E29145B6 /* RoutesView.swift */; };
 		51605083AE0552E9E6C93CA1 /* RideMetricsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7656B3A069C537397038E09 /* RideMetricsStore.swift */; };
 		5CBB516D9CE1B94B2AAE3AF8 /* BLEHeartRateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E8780BF575B42866708ACC /* BLEHeartRateManager.swift */; };
@@ -46,7 +48,7 @@
 		A5B52D04C34F1D4BC1E44AD0 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 258B0A3578A8CEBA8ACB581A /* LocationManager.swift */; };
 		ACBD823B2B107396D05A5C6B /* RideIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DE4469262FA175D3B74892 /* RideIntents.swift */; };
 		B0B3EB3EF4F4FC3C0215E783 /* PastCoursesMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE48599CC89BD900D7590F1 /* PastCoursesMapView.swift */; };
-		B0FC63DE118D517E801BDCCE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4E100D8FF9E8DA11CFDD191F /* ZIPFoundation */; };
+		B0FC63DE118D517E801BDCCE /* NMapsMap in Frameworks */ = {isa = PBXBuildFile; productRef = FB90C0035C942F59779295BC /* NMapsMap */; };
 		B2FC00CD72B093D6A7B94C19 /* RideUIComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118813BCCC09120CB3B42175 /* RideUIComponents.swift */; };
 		B7CCBFF2E8F891A99018F2F8 /* BackupZip.swift in Sources */ = {isa = PBXBuildFile; fileRef = B916C1F0187BEEA9965FB42F /* BackupZip.swift */; };
 		C12797101424796B7B255E41 /* BikeComWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 32F191682EFC736D03287B94 /* BikeComWatchWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -164,7 +166,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				728CF2E6D7DDC84E434721D2 /* GoogleMaps in Frameworks */,
-				B0FC63DE118D517E801BDCCE /* ZIPFoundation in Frameworks */,
+				B0FC63DE118D517E801BDCCE /* NMapsMap in Frameworks */,
+				430F6FDD97C831BB56ED10AF /* NMapsGeometry in Frameworks */,
+				49DEF05DC1756E4C616A0C0F /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -365,6 +369,8 @@
 			name = BikeCom;
 			packageProductDependencies = (
 				8B1F5B6B847F811EE1F18560 /* GoogleMaps */,
+				FB90C0035C942F59779295BC /* NMapsMap */,
+				180CA1104996ADE925372CAE /* NMapsGeometry */,
 				4E100D8FF9E8DA11CFDD191F /* ZIPFoundation */,
 			);
 			productName = BikeCom;
@@ -426,6 +432,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				B04DA009B1F6DBC8FA0714DA /* XCRemoteSwiftPackageReference "ios-maps-sdk" */,
+				D0DAE0E05D7DE6C39B27C775 /* XCRemoteSwiftPackageReference "SPM-NMapsGeometry" */,
+				A3DF2217AA019B6BE0C774BA /* XCRemoteSwiftPackageReference "SPM-NMapsMap" */,
 				8A1194004154A93E902505E0 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -644,7 +652,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 9AWEB9NYHH;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -729,7 +737,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 9AWEB9NYHH;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -873,6 +881,14 @@
 				version = 0.9.19;
 			};
 		};
+		A3DF2217AA019B6BE0C774BA /* XCRemoteSwiftPackageReference "SPM-NMapsMap" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/navermaps/SPM-NMapsMap";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.24.0;
+			};
+		};
 		B04DA009B1F6DBC8FA0714DA /* XCRemoteSwiftPackageReference "ios-maps-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/googlemaps/ios-maps-sdk";
@@ -881,9 +897,22 @@
 				minimumVersion = 9.0.0;
 			};
 		};
+		D0DAE0E05D7DE6C39B27C775 /* XCRemoteSwiftPackageReference "SPM-NMapsGeometry" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/navermaps/SPM-NMapsGeometry";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		180CA1104996ADE925372CAE /* NMapsGeometry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D0DAE0E05D7DE6C39B27C775 /* XCRemoteSwiftPackageReference "SPM-NMapsGeometry" */;
+			productName = NMapsGeometry;
+		};
 		4E100D8FF9E8DA11CFDD191F /* ZIPFoundation */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 8A1194004154A93E902505E0 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
@@ -893,6 +922,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B04DA009B1F6DBC8FA0714DA /* XCRemoteSwiftPackageReference "ios-maps-sdk" */;
 			productName = GoogleMaps;
+		};
+		FB90C0035C942F59779295BC /* NMapsMap */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A3DF2217AA019B6BE0C774BA /* XCRemoteSwiftPackageReference "SPM-NMapsMap" */;
+			productName = NMapsMap;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -4,6 +4,10 @@ import WebKit
 #if canImport(GoogleMaps)
 import GoogleMaps
 #endif
+#if canImport(NMapsMap)
+import NMapsMap
+import NMapsGeometry
+#endif
 
 /// Map 탭 — 현재 위치 + 진행 중인 라이딩 경로(폴리라인).
 struct MapTabView: View {
@@ -261,6 +265,16 @@ struct LiveMap: View {
             #else
             appleMap
             #endif
+        case .naver:
+            #if canImport(NMapsMap)
+            if NaverConfig.hasKey {
+                NaverLiveMap(track: track, userLocation: userLocation, courseTrack: courseTrack, navigationMode: navigationMode, recenterToken: recenterToken)
+            } else {
+                appleMap
+            }
+            #else
+            appleMap
+            #endif
         case .apple:
             appleMap
         }
@@ -344,19 +358,103 @@ struct GoogleLiveMap: UIViewRepresentable {
 }
 #endif
 
+#if canImport(NMapsMap)
+/// 네이버 지도 라이브 추적 — 경로 폴리라인(NMFPath) + 사용자 위치(locationOverlay).
+/// GoogleLiveMap 과 달리 카메라를 NMFCameraUpdate 팩토리로만 바꿀 수 있어
+/// 3D 틸트 내비게이션 카메라는 생략하고 팬(이동) 추적만 제공한다.
+struct NaverLiveMap: UIViewRepresentable {
+    let track: [CLLocationCoordinate2D]
+    let userLocation: CLLocationCoordinate2D?
+    var courseTrack: [CLLocationCoordinate2D] = []
+    var navigationMode: Bool = false
+    var recenterToken: Int = 0
+
+    func makeUIView(context: Context) -> NMFMapView {
+        let map = NMFMapView(frame: .zero)
+        map.mapType = .basic
+        map.positionMode = .disabled   // 위치는 LocationManager 좌표로 직접 표시(중복 방지)
+        map.locationOverlay.hidden = false
+        map.addCameraDelegate(delegate: context.coordinator)
+        return map
+    }
+
+    func updateUIView(_ map: NMFMapView, context: Context) {
+        if context.coordinator.recenterToken != recenterToken {
+            context.coordinator.recenterToken = recenterToken
+            context.coordinator.userMoved = false
+        }
+        context.coordinator.courseOverlay?.mapView = nil
+        context.coordinator.trackOverlay?.mapView = nil
+        context.coordinator.courseOverlay = nil
+        context.coordinator.trackOverlay = nil
+
+        if courseTrack.count > 1 {
+            let points = courseTrack.map { NMGLatLng(lat: $0.latitude, lng: $0.longitude) }
+            if let line = NMFPath(points: points) {
+                line.color = UIColor.systemOrange.withAlphaComponent(0.7)
+                line.width = 6
+                line.mapView = map
+                context.coordinator.courseOverlay = line
+            }
+        }
+        if track.count > 1 {
+            let points = track.map { NMGLatLng(lat: $0.latitude, lng: $0.longitude) }
+            if let line = NMFPath(points: points) {
+                line.color = .systemBlue
+                line.width = 5
+                line.mapView = map
+                context.coordinator.trackOverlay = line
+            }
+        }
+        if let loc = userLocation {
+            let target = NMGLatLng(lat: loc.latitude, lng: loc.longitude)
+            map.locationOverlay.location = target
+            if !context.coordinator.userMoved {
+                map.moveCamera(NMFCameraUpdate(scrollTo: target))
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, NMFMapViewCameraDelegate {
+        var userMoved = false
+        var recenterToken = 0
+        var trackOverlay: NMFPath?
+        var courseOverlay: NMFPath?
+        func mapView(_ mapView: NMFMapView, cameraWillChangeByReason reason: Int, animated: Bool) {
+            if reason == NMFMapChangedByGesture { userMoved = true }
+        }
+    }
+}
+#endif
+
 // MARK: - 지도 설정(제공자 선택 + 코스 선택) — 단일 타깃 빌드 위해 MapTabView 에 통합
 
 /// 지도 제공자 선택(영속: AppStorage "map.provider").
 enum MapProvider: String, CaseIterable, Identifiable {
-    case apple, google, kakao
+    case apple, google, naver, kakao
     var id: String { rawValue }
     var label: String {
         switch self {
         case .apple: return "Apple 지도"
         case .google: return "Google 지도"
+        case .naver: return "네이버 지도"
         case .kakao: return "카카오 자전거 맵"
         }
     }
+}
+
+/// 네이버 지도(NCP) Client ID. ⚙️ → 지도 설정에서 입력한 값(UserDefaults)이 우선이고,
+/// 없으면 Info.plist(NMFNcpKeyId, 빌드 시 고정값)로 폴백. 둘 다 없으면 Apple 지도로 폴백.
+enum NaverConfig {
+    static let defaultsKey = "map.apiKey.naver"
+    static var clientId: String {
+        let saved = UserDefaults.standard.string(forKey: defaultsKey) ?? ""
+        if !saved.isEmpty { return saved }
+        return (Bundle.main.object(forInfoDictionaryKey: "NMFNcpKeyId") as? String) ?? ""
+    }
+    static var hasKey: Bool { !clientId.isEmpty }
 }
 
 /// 카카오 지도 JavaScript 키(Info.plist: KakaoJavaScriptAppKey). 없으면 Apple 폴백.
@@ -374,6 +472,8 @@ struct MapSettingsSheet: View {
     @EnvironmentObject var session: RideSession
     @Environment(\.dismiss) private var dismiss
     @AppStorage("map.provider") private var providerRaw = MapProvider.apple.rawValue
+    @AppStorage(GMapsConfig.defaultsKey) private var googleApiKeyInput = ""
+    @AppStorage(NaverConfig.defaultsKey) private var naverClientIdInput = ""
 
     /// 지도 코스 자료(isCourseOnly) + GPS 있는 코스만, 표시 이름순.
     private var courseRecords: [RideRecord] {
@@ -400,6 +500,35 @@ struct MapSettingsSheet: View {
                     Text("지도 선택")
                 } footer: {
                     providerFooter
+                }
+
+                Section {
+                    LabeledContent("Google API 키") {
+                        TextField("GMSApiKey", text: $googleApiKeyInput)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("네이버 Client ID") {
+                        TextField("NCP Client ID", text: $naverClientIdInput)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .multilineTextAlignment(.trailing)
+                    }
+                } header: {
+                    Text("지도 API 키")
+                } footer: {
+                    Text("Google Cloud Console(Maps SDK for iOS)과 Naver Cloud Platform(Maps · AI NAVER API)에서 발급한 키를 입력하면 앱을 다시 빌드하지 않아도 바로 적용됩니다. 비워두면 빌드에 고정된 키(있는 경우) 또는 Apple 지도를 사용합니다.")
+                }
+                .onChange(of: googleApiKeyInput) { _, newValue in
+                    #if canImport(GoogleMaps)
+                    if !newValue.isEmpty { GMSServices.provideAPIKey(newValue) }
+                    #endif
+                }
+                .onChange(of: naverClientIdInput) { _, newValue in
+                    #if canImport(NMapsMap)
+                    if !newValue.isEmpty { NMFAuthManager.shared().ncpKeyId = newValue }
+                    #endif
                 }
 
                 Section("코스 선택") {
@@ -448,7 +577,11 @@ struct MapSettingsSheet: View {
         case .google:
             Text(googleAvailable
                  ? "Google 지도를 사용합니다."
-                 : "Google 지도는 GoogleMaps SDK + API 키(Info.plist: GMSApiKey)가 필요합니다. 없으면 Apple 지도로 표시됩니다.")
+                 : "Google 지도는 API 키가 필요합니다. 아래 '지도 API 키'에 입력하세요. 없으면 Apple 지도로 표시됩니다.")
+        case .naver:
+            Text(naverAvailable
+                 ? "네이버 지도를 사용합니다."
+                 : "네이버 지도는 Client ID가 필요합니다. 아래 '지도 API 키'에 입력하세요. 없으면 Apple 지도로 표시됩니다.")
         case .kakao:
             Text(KakaoConfig.hasKey
                  ? "카카오 자전거 맵(자전거 도로 오버레이)을 사용합니다."
@@ -459,6 +592,14 @@ struct MapSettingsSheet: View {
     private var googleAvailable: Bool {
         #if canImport(GoogleMaps)
         return GMapsConfig.hasKey
+        #else
+        return false
+        #endif
+    }
+
+    private var naverAvailable: Bool {
+        #if canImport(NMapsMap)
+        return NaverConfig.hasKey
         #else
         return false
         #endif
