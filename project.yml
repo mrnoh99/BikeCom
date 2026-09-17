@@ -62,12 +62,18 @@ settings:
     SWIFT_VERSION: "5.9"
     GENERATE_INFOPLIST_FILE: NO
 
-# 과거 코스 오버레이용 Google 지도 SDK. 쓰지 않으려면 이 packages 블록과
-# 아래 BikeCom 의 GoogleMaps 의존성을 지우면 Apple 지도로 폴백한다.
+# 지도 SDK(Google·네이버). 키가 없으면 둘 다 Apple 지도로 폴백하므로 안 쓰려면
+# packages 블록과 아래 BikeCom 의 해당 의존성을 지우면 된다.
 packages:
   GoogleMaps:
     url: https://github.com/googlemaps/ios-maps-sdk
     from: "9.0.0"
+  NMapsMap:
+    url: https://github.com/navermaps/SPM-NMapsMap
+    from: "3.24.0"
+  NMapsGeometry:
+    url: https://github.com/navermaps/SPM-NMapsGeometry
+    from: "1.0.2"
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation
     exactVersion: 0.9.19
@@ -91,6 +97,9 @@ targets:
         # 없으면 iOS 가 구형 화면 비율로 letterbox → 위아래 검은 여백 발생.
         UILaunchStoryboardName: LaunchScreen
         GMSApiKey: ""
+        # 네이버 지도(NCP) Client ID. 앱 내 설정(⚙️ → 지도 → 지도 API 키)에서 입력한 값이
+        # 있으면 그쪽이 우선이고, 여기는 빌드에 고정 배포 키를 넣고 싶을 때만 채운다.
+        NMFNcpKeyId: ""
         # 카카오 자전거 맵용 JavaScript 키. Kakao 개발자 콘솔에서 발급 후 입력하고,
         # Web 플랫폼 사이트 도메인에 WKWebView baseURL(기본 https://localhost)을 등록할 것.
         KakaoJavaScriptAppKey: ""
@@ -129,6 +138,10 @@ targets:
         codeSign: true
       - package: GoogleMaps
         product: GoogleMaps
+      - package: NMapsMap
+        product: NMapsMap
+      - package: NMapsGeometry
+        product: NMapsGeometry
       - package: ZIPFoundation
         product: ZIPFoundation
     postBuildScripts:

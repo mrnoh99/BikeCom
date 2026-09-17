@@ -4,6 +4,10 @@ import CoreLocation
 #if canImport(GoogleMaps)
 import GoogleMaps
 #endif
+#if canImport(NMapsMap)
+import NMapsMap
+import NMapsGeometry
+#endif
 
 /// 좌표 → 짧은 지명 역지오코딩 결과 캐시(중복 조회·throttle 방지).
 actor PlaceNameCache {
@@ -225,44 +229,65 @@ private struct CourseManagerRow: View {
     }
 }
 
-/// Google 지도 사용 가능 여부(SDK + Info.plist GMSApiKey).
+/// Google 지도(NCP Client ID) 사용 가능 여부. ⚙️ → 지도 설정에서 입력한 값(UserDefaults)이
+/// 우선이고, 없으면 Info.plist(GMSApiKey, 빌드 시 고정값)로 폴백.
 enum GMapsConfig {
-    static var hasKey: Bool {
-        (Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String).map { !$0.isEmpty } ?? false
+    static let defaultsKey = "map.apiKey.google"
+    static var apiKey: String {
+        let saved = UserDefaults.standard.string(forKey: defaultsKey) ?? ""
+        if !saved.isEmpty { return saved }
+        return (Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String) ?? ""
     }
+    static var hasKey: Bool { !apiKey.isEmpty }
 }
 
-/// 여러 코스 오버레이: Google(가능 시) 또는 Apple.
+/// 여러 코스 오버레이: 지도 설정에서 고른 제공자(Google/네이버, 키 있을 때) 또는 Apple.
 struct PastCoursesMap: View {
     let tracks: [[CLLocationCoordinate2D]]
+    @AppStorage("map.provider") private var providerRaw = MapProvider.apple.rawValue
+    private var provider: MapProvider { MapProvider(rawValue: providerRaw) ?? .apple }
 
     var body: some View {
-        #if canImport(GoogleMaps)
-        if GMapsConfig.hasKey {
-            GoogleRouteMap(tracks: tracks)
-        } else {
-            MultiRouteAppleMap(tracks: tracks)
+        switch provider {
+        case .naver:
+            #if canImport(NMapsMap)
+            if NaverConfig.hasKey { NaverRouteMap(tracks: tracks) } else { fallback }
+            #else
+            fallback
+            #endif
+        case .google, .kakao, .apple:
+            #if canImport(GoogleMaps)
+            if GMapsConfig.hasKey { GoogleRouteMap(tracks: tracks) } else { fallback }
+            #else
+            fallback
+            #endif
         }
-        #else
-        MultiRouteAppleMap(tracks: tracks)
-        #endif
     }
+
+    private var fallback: some View { MultiRouteAppleMap(tracks: tracks) }
 }
 
-/// 단일 경로 정적 지도(라이딩 상세용): Google(가능 시) 또는 Apple(autoFit).
+/// 단일 경로 정적 지도(라이딩 상세용): 지도 설정에서 고른 제공자(키 있을 때) 또는 Apple(autoFit).
 struct StaticRouteMap: View {
     let track: [CLLocationCoordinate2D]
+    @AppStorage("map.provider") private var providerRaw = MapProvider.apple.rawValue
+    private var provider: MapProvider { MapProvider(rawValue: providerRaw) ?? .apple }
 
     var body: some View {
-        #if canImport(GoogleMaps)
-        if GMapsConfig.hasKey {
-            GoogleRouteMap(tracks: [track])
-        } else {
+        switch provider {
+        case .naver:
+            #if canImport(NMapsMap)
+            if NaverConfig.hasKey { NaverRouteMap(tracks: [track]) } else { appleMap }
+            #else
             appleMap
+            #endif
+        case .google, .kakao, .apple:
+            #if canImport(GoogleMaps)
+            if GMapsConfig.hasKey { GoogleRouteMap(tracks: [track]) } else { appleMap }
+            #else
+            appleMap
+            #endif
         }
-        #else
-        appleMap
-        #endif
     }
 
     private var appleMap: some View {
@@ -300,6 +325,51 @@ struct GoogleRouteMap: UIViewRepresentable {
             map.moveCamera(GMSCameraUpdate.fit(bounds, withPadding: 40))
         }
     }
+}
+#endif
+
+#if canImport(NMapsMap)
+/// 네이버 지도로 여러 코스 폴리라인(NMFPath)을 표시.
+struct NaverRouteMap: UIViewRepresentable {
+    let tracks: [[CLLocationCoordinate2D]]
+    private let palette: [UIColor] = [.systemBlue, .systemRed, .systemGreen, .systemOrange, .systemPurple, .systemTeal]
+
+    func makeUIView(context: Context) -> NMFMapView {
+        let map = NMFMapView(frame: .zero)
+        map.mapType = .basic
+        map.positionMode = .disabled
+        return map
+    }
+
+    func updateUIView(_ map: NMFMapView, context: Context) {
+        context.coordinator.overlays.forEach { $0.mapView = nil }
+        context.coordinator.overlays.removeAll()
+
+        var minLat: Double?, maxLat: Double?, minLng: Double?, maxLng: Double?
+        for (i, track) in tracks.enumerated() where track.count > 1 {
+            let points = track.map { NMGLatLng(lat: $0.latitude, lng: $0.longitude) }
+            if let line = NMFPath(points: points) {
+                line.color = palette[i % palette.count]
+                line.width = 4
+                line.mapView = map
+                context.coordinator.overlays.append(line)
+            }
+            for c in track {
+                minLat = min(minLat ?? c.latitude, c.latitude)
+                maxLat = max(maxLat ?? c.latitude, c.latitude)
+                minLng = min(minLng ?? c.longitude, c.longitude)
+                maxLng = max(maxLng ?? c.longitude, c.longitude)
+            }
+        }
+        if let minLat, let maxLat, let minLng, let maxLng {
+            let bounds = NMGLatLngBounds(southWest: NMGLatLng(lat: minLat, lng: minLng),
+                                         northEast: NMGLatLng(lat: maxLat, lng: maxLng))
+            map.moveCamera(NMFCameraUpdate(fit: bounds, padding: 40))
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator { var overlays: [NMFPath] = [] }
 }
 #endif
 

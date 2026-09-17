@@ -132,7 +132,7 @@ BikeCom/                       # 아이폰 앱
               GPXImporter.swift           # Cyclemeter 등 GPX 일괄 가져오기(파일/폴더)
               HealthWorkoutImporter.swift # Apple 건강 사이클링 워크아웃(경로·심박) 가져오기
               RideSession.swift           # 메인 뷰모델(상태머신·소스우선순위·통계·저장)
-  Views/      ContentView(단일 화면) · DashboardView(⚙️ 메뉴) · MapTabView(+LiveMap/GoogleLiveMap)
+  Views/      ContentView(단일 화면) · DashboardView(⚙️ 메뉴) · MapTabView(+LiveMap/GoogleLiveMap/NaverLiveMap)
               RoutesView(정렬·코스별·상세) · PastCoursesMapView(과거 코스 오버레이)
               DevicesView · MoreView · Components/MetricCell
   Assets.xcassets
@@ -180,11 +180,19 @@ BikeComWatch/                  # 애플워치 앱
 
 - 라이딩 거리는 GPS 트랙 기준이며, 누적 거리(이번달/올해/총)는 Apple 건강의 사이클링 거리 합으로 집계.
 - 워치 속도/케이던스는 워치 설정에서 BLE 센서를 OS 에 페어링해야 동작(watchOS 10+).
-- **지도는 Google 지도(표준 타입)** 사용 — 라이브 Map 탭(`GoogleLiveMap`), 라이딩 상세(`StaticRouteMap`),
-  과거 코스 오버레이(`GoogleRouteMap`) 모두. `#if canImport(GoogleMaps)` 로 감싸 SDK·키가 있으면 Google,
-  없으면 **Apple 지도(MapKit)로 폴백**(앱은 항상 빌드됨). 활성화하려면:
-  ① `project.yml` 의 GoogleMaps SPM 의존성 유지(`xcodegen generate`) ② Google Cloud 에서 **Maps SDK for iOS**
-  키 발급 ③ `Info.plist` 의 `GMSApiKey` 에 키 입력. 키가 비어 있으면 자동으로 Apple 지도로 표시.
+- **지도 제공자**: Apple / **Google 지도** / **네이버 지도** / 카카오 자전거 맵 중 ⚙️ → **지도** 화면에서 선택.
+  라이브 Map 탭(`GoogleLiveMap`/`NaverLiveMap`), 라이딩 상세(`StaticRouteMap`), 과거 코스 오버레이
+  (`GoogleRouteMap`/`NaverRouteMap`) 모두 같은 선택을 따른다. 각각 `#if canImport(GoogleMaps)` /
+  `#if canImport(NMapsMap)` 로 감싸 SDK·키가 있을 때만 쓰고, 없으면 **Apple 지도(MapKit)로 폴백**(앱은
+  항상 빌드됨).
+  - **API 키 입력**: ⚙️ → 지도 → **지도 API 키**에서 Google/네이버 키를 붙여넣으면 **재빌드 없이 즉시 적용**된다
+    (`UserDefaults` 저장 → `GMapsConfig`/`NaverConfig` 가 읽어 `GMSServices.provideAPIKey`/
+    `NMFAuthManager.shared().ncpKeyId` 를 그 자리에서 다시 호출). 비워두면 `Info.plist` 의 빌드 고정 키
+    (`GMSApiKey`/`NMFNcpKeyId`, 기본 빈 값)로 폴백 — 배포용 기본 키를 박아두고 싶을 때만 채운다.
+  - **Google**: `project.yml` 의 GoogleMaps SPM 의존성(`xcodegen generate`) + Google Cloud Console 에서
+    **Maps SDK for iOS** 키 발급.
+  - **네이버**: `project.yml` 의 NMapsMap/NMapsGeometry SPM 의존성(`xcodegen generate`) + Naver Cloud
+    Platform 콘솔(Maps · AI NAVER API)에서 **Client ID** 발급, 앱 번들 ID를 등록.
 - **과거 코스 오버레이**(Map 탭 → "과거 코스"): 코스별 대표 경로를 한 지도에 색별로 겹쳐 표시.
 - 랩(구간) 기록 · 사용자 자전거 다중 프로필 미구현. (GPX 내보내기/가져오기·HealthKit 경로·iCloud 동기화는 구현됨)
 - **데이터 가져오기**(More 탭): ① **Apple 건강에서 가져오기** — 건강의 사이클링 워크아웃(거리·시간·평균/최대
