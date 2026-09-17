@@ -23,7 +23,7 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>속도·케이던스(CSC) 센서를 폰에 직접 연결해 속도·케이던스를 받습니다.</string>
+	<string>속도·케이던스(CSC)·심박 BLE 센서를 폰에 직접 연결하고, 페어링되지 않은 Apple Watch의 심박 브로드캐스트를 받습니다.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>라이딩 종료 시 요약을 캘린더에 기록합니다.</string>
 	<key>NSHealthShareUsageDescription</key>

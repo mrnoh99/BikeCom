@@ -14,13 +14,16 @@ fi
 
 XCODEBUILD="${DEVELOPER_DIR}/usr/bin/xcodebuild"
 
-if ! command -v xcodegen >/dev/null 2>&1; then
+if command -v xcodegen >/dev/null 2>&1; then
+  echo "==> Xcode 프로젝트 생성"
+  xcodegen generate
+elif [[ -d BikeCom.xcodeproj ]]; then
+  echo "==> xcodegen 미설치 — 저장소에 커밋된 BikeCom.xcodeproj 를 그대로 사용"
+  echo "    (project.yml 을 직접 수정했다면 xcodegen 설치 후 다시 generate 할 것: brew install xcodegen)"
+else
   echo "xcodegen 이 필요합니다: brew install xcodegen"
   exit 1
 fi
-
-echo "==> Xcode 프로젝트 생성"
-xcodegen generate
 
 echo "==> Swift 패키지 의존성 해결"
 "$XCODEBUILD" -project BikeCom.xcodeproj -scheme BikeCom -resolvePackageDependencies
