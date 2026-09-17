@@ -241,7 +241,6 @@ final class WorkoutManager: NSObject, ObservableObject {
                     self.persistSnapshot(forceReload: true)
                 }
                 self.startHeartRateQuery(from: startDate)
-                HeartRateBroadcaster.shared.start()
                 self.sendEphemeral(["workoutStarted": success])
                 self.sendMetricsToPhone()
             }
@@ -256,7 +255,6 @@ final class WorkoutManager: NSObject, ObservableObject {
     func stopWorkout() {
         stopRelayTimer()
         stopHeartRateQuery()
-        HeartRateBroadcaster.shared.stop()
         isStarting = false
         guard let activeSession = session else { return }
         let activeBuilder = builder
@@ -322,7 +320,6 @@ final class WorkoutManager: NSObject, ObservableObject {
         let bpm = Int(sample.quantity.doubleValue(for: .count().unitDivided(by: .minute())).rounded())
         guard bpm > 0 else { return }
         DispatchQueue.main.async { self.heartRate = bpm }
-        HeartRateBroadcaster.shared.update(bpm: bpm)
         sendMetricsToPhone()
     }
 
@@ -472,7 +469,6 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
                         from fromState: HKWorkoutSessionState, date: Date) {
         if toState == .ended {
             stopHeartRateQuery()
-            HeartRateBroadcaster.shared.stop()
             isStarting = false
             DispatchQueue.main.async {
                 self.isRunning = false
@@ -488,7 +484,6 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
         session?.end()
         session = nil
         builder = nil
-        HeartRateBroadcaster.shared.stop()
         DispatchQueue.main.async {
             self.isRunning = false
             self.stopRelayTimer()
@@ -510,10 +505,7 @@ extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
             let stats = workoutBuilder.statistics(for: hrType)
             if let q = stats?.mostRecentQuantity() {
                 let bpm = Int(q.doubleValue(for: bpmUnit).rounded())
-                if bpm > 0 {
-                    DispatchQueue.main.async { self.heartRate = bpm }
-                    HeartRateBroadcaster.shared.update(bpm: bpm)
-                }
+                if bpm > 0 { DispatchQueue.main.async { self.heartRate = bpm } }
             }
             if let avg = stats?.averageQuantity() {
                 let avgBpm = Int(avg.doubleValue(for: bpmUnit).rounded())

@@ -108,7 +108,7 @@ targets:
         NSHealthUpdateUsageDescription: "라이딩을 Apple 건강 앱에 저장합니다."
         NSLocationAlwaysAndWhenInUseUsageDescription: "백그라운드에서도 라이딩 경로를 기록합니다."
         NSLocationWhenInUseUsageDescription: "라이딩 중 GPS 경로·거리·속도를 기록합니다."
-        NSBluetoothAlwaysUsageDescription: "속도·케이던스(CSC)·심박 BLE 센서를 폰에 직접 연결하고, 페어링되지 않은 Apple Watch의 심박 브로드캐스트를 받습니다."
+        NSBluetoothAlwaysUsageDescription: "속도·케이던스(CSC)·심박 BLE 센서를 폰에 직접 연결하고, 받은 심박을 페어링되지 않은 다른 아이폰이 받을 수 있도록 다시 광고합니다."
         UIBackgroundModes:
           - location
           - bluetooth-central
@@ -178,7 +178,6 @@ targets:
         CFBundleDisplayName: BikeCom
         NSHealthShareUsageDescription: "라이딩 중 심박·속도·케이던스를 측정합니다."
         NSHealthUpdateUsageDescription: "워크아웃 세션을 Apple 건강에 기록합니다."
-        NSBluetoothAlwaysUsageDescription: "워치를 표준 BLE 심박 센서로 광고해, 페어링되지 않은 다른 아이폰에서도 심박을 받을 수 있게 합니다."
         # Xcode 26: 단일 타깃 워치 앱은 이 키가 있어야 설치된다. 없으면 watchOS 가
         # 구형 WatchKit Extension 구조로 인식해 설치(또는 워치 동기화)에 실패한다.
         WKApplication: true

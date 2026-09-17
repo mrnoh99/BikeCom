@@ -368,9 +368,9 @@ private struct SensorBLESection: View {
     }
 }
 
-/// 폰 BLE 심박 센서 — 표준 BLE 심박 스트랩뿐 아니라, 페어링되지 않은 다른 아이폰의
-/// Apple Watch(BikeCom 워치 앱이 `HeartRateBroadcaster` 로 브로드캐스트 중)도 여기서
-/// 스캔·연결해 심박을 받을 수 있다.
+/// 폰 BLE 심박 센서 — 표준 BLE 심박 스트랩뿐 아니라, 페어링되지 않은 다른 아이폰
+/// (BikeCom 을 실행 중이며 `HeartRateBroadcaster` 로 자신이 받은 심박을 재광고하는 폰)
+/// 도 여기서 스캔·연결해 심박을 받을 수 있다.
 private struct SensorBLEHeartRateSection: View {
     @ObservedObject var bleHR: BLEHeartRateManager
 
@@ -409,7 +409,7 @@ private struct SensorBLEHeartRateSection: View {
         } header: {
             Text("심박 센서(폰 BLE)")
         } footer: {
-            Text("표준 BLE 심박 스트랩 또는 페어링되지 않은 다른 아이폰의 Apple Watch(BikeCom 워치 앱 실행 중) 브로드캐스트를 직접 수신합니다. Apple Watch가 이 폰과 페어링돼 있으면(WatchConnectivity) 그쪽을 우선 사용하고, 여기 연결은 보조/대체 경로로만 쓰입니다.")
+            Text("표준 BLE 심박 스트랩 또는 페어링되지 않은 다른 아이폰(BikeCom 실행 중, 라이딩하며 자신의 심박을 재광고)의 브로드캐스트를 직접 수신합니다. Apple Watch가 이 폰과 페어링돼 있으면(WatchConnectivity) 그쪽을 우선 사용하고, 여기 연결은 보조/대체 경로로만 쓰입니다.")
         }
     }
 

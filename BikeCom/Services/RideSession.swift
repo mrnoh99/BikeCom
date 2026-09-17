@@ -568,7 +568,14 @@ final class RideSession: ObservableObject {
 
     // 상태
     @Published private(set) var state: RideState = .idle {
-        didSet { updateScreenAwake() }
+        didSet {
+            updateScreenAwake()
+            if state != .idle, oldValue == .idle {
+                HeartRateBroadcaster.shared.start()
+            } else if state == .idle, oldValue != .idle {
+                HeartRateBroadcaster.shared.stop()
+            }
+        }
     }
     /// 라이브 주행 지표 — 0.5초 tick 으로 갱신되지만 @Published 가 아니어서 session 의
     /// objectWillChange 를 발행하지 않는다(Routes·More 등이 매 틱 재렌더되는 것 방지).
@@ -1069,6 +1076,7 @@ final class RideSession: ObservableObject {
 
     private func ingestHeartRate(_ bpm: Int?) {
         heartRate = bpm
+        if let bpm, bpm > 0 { HeartRateBroadcaster.shared.update(bpm: bpm) }
         // Max·평균 누적은 라이딩 중에만. (idle 상태나 재시작 시 워치가 재전달하는
         // 캐시된 심박이 최고 심박에 반영되는 것을 막는다.)
         if let bpm, bpm > 0, state == .running {

@@ -1,12 +1,14 @@
 import Foundation
 import CoreBluetooth
 
-/// 워치를 표준 BLE 심박 센서(GATT Heart Rate Service `0x180D`)로 광고한다.
+/// 이 폰이 지금 갖고 있는 심박(워치 WCSession 또는 폰 BLE 스트랩에서 받은 값)을
+/// 표준 BLE Heart Rate Service(`0x180D`)로 재광고한다.
 ///
-/// `WCSession`(WatchConnectivity)은 이 워치와 OS 레벨로 **페어링된** 단 하나의 아이폰에만
-/// 심박을 전달할 수 있다. 반면 BLE GATT 연결은 페어링과 무관하므로, 여기서 워치를
-/// 일반 BLE 심박 스트랩처럼 어드버타이즈하면 페어링되지 않은 다른 아이폰의 BikeCom
-/// (또는 표준 HR 서비스를 스캔하는 임의의 앱)도 근처에서 심박을 구독할 수 있다.
+/// `CBPeripheralManager`(BLE 페리페럴/광고 역할)는 **watchOS 에는 없다** — 센트럴 역할만
+/// 지원한다. 그래서 워치가 직접 BLE 로 광고할 수는 없고, 대신 이미 심박을 받은 폰이
+/// 일반 BLE 심박 스트랩처럼 재광고한다. 이렇게 하면 이 폰과 페어링되지 않은 다른
+/// 아이폰(BikeCom 의 `BLEHeartRateManager`, 또는 표준 HR 서비스를 스캔하는 임의의 앱)도
+/// 근처에서 이 폰을 거쳐 심박을 받을 수 있다.
 final class HeartRateBroadcaster: NSObject {
     static let shared = HeartRateBroadcaster()
 
@@ -19,7 +21,7 @@ final class HeartRateBroadcaster: NSObject {
     private var advertising = false
     private var latestBPM: Int = 0
 
-    /// 워크아웃 시작 시 호출 — 아직 켜져 있지 않으면 `CBPeripheralManager` 를 만든다.
+    /// 라이딩 시작 시 호출 — 아직 켜져 있지 않으면 `CBPeripheralManager` 를 만든다.
     func start() {
         guard peripheralManager == nil else {
             startAdvertisingIfNeeded()
@@ -28,7 +30,7 @@ final class HeartRateBroadcaster: NSObject {
         peripheralManager = CBPeripheralManager(delegate: self, queue: .main)
     }
 
-    /// 워크아웃 종료 시 호출 — 광고·서비스를 모두 내린다.
+    /// 라이딩 종료 시 호출 — 광고·서비스를 모두 내린다.
     func stop() {
         guard let pm = peripheralManager else { return }
         if advertising { pm.stopAdvertising() }
@@ -71,7 +73,7 @@ final class HeartRateBroadcaster: NSObject {
         guard let pm = peripheralManager, pm.state == .poweredOn, serviceAdded, !advertising else { return }
         pm.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [Self.heartRateService],
-            CBAdvertisementDataLocalNameKey: "BikeCom Watch HR",
+            CBAdvertisementDataLocalNameKey: "BikeCom HR",
         ])
         advertising = true
     }
