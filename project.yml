@@ -1,3 +1,5 @@
+# XcodeGen 프로젝트 정의. 이 파일이 바뀌면 .github/workflows/xcodegen.yml 이
+# macOS 러너에서 `xcodegen generate` 를 실행해 BikeCom.xcodeproj 를 자동 재생성·커밋한다.
 name: BikeCom
 options:
   bundleIdPrefix: com.jaisungnoh.bikecom
