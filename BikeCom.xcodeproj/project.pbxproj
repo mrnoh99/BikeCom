@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00EFEA2588710D09FB211D2A /* CSVImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE37C7F82CF9DC6DFF1CF6F6 /* CSVImporter.swift */; };
+		055EA70E8661A067FCF59E3B /* HeartRateBroadcaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = A34438C57A0D6781F8A5ECBD /* HeartRateBroadcaster.swift */; };
 		0901859CB9D1A26FF88BE204 /* RideSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5AD724CC74E317C6D46F8C3 /* RideSession.swift */; };
 		1132CB7933EF8F37E1F099B8 /* WCPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63998CF67362FC03E1B327C /* WCPayload.swift */; };
 		123E94AF21243545B13A4560 /* SeedRides.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A6874FD29E47F42ABCF432 /* SeedRides.swift */; };
@@ -33,7 +34,6 @@
 		718AC728638CB53BD1753670 /* BLECSCManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 802E1929F3A53B16347055A1 /* BLECSCManager.swift */; };
 		728CF2E6D7DDC84E434721D2 /* GoogleMaps in Frameworks */ = {isa = PBXBuildFile; productRef = 8B1F5B6B847F811EE1F18560 /* GoogleMaps */; };
 		734A75B9338083A35E5096D9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCDF420041FAE69E912CF616 /* ContentView.swift */; };
-		7E585F85F5B3B627FDB41977 /* HeartRateBroadcaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43FC63B2E752BAAFB71AB249 /* HeartRateBroadcaster.swift */; };
 		7F4FE873BD90516A1D6C1DA8 /* MetricCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3425456A0F4AFD163476130E /* MetricCell.swift */; };
 		7FE909BFE6BB7D6922A9AEDD /* RideSaveProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E09C914E9ADDB10A4A0D33 /* RideSaveProgressView.swift */; };
 		82B06ECAF778E77E000E66D8 /* WatchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A44B7FF74AA23B117B2662 /* WatchContentView.swift */; };
@@ -121,7 +121,6 @@
 		39C59B1A82244D7F6E20716A /* BikeComWatchWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeComWatchWidget.swift; sourceTree = "<group>"; };
 		3F42C4588A5BABE8E29145B6 /* RoutesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutesView.swift; sourceTree = "<group>"; };
 		40712A3D57D2456D71FCB8ED /* RideRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideRecord.swift; sourceTree = "<group>"; };
-		43FC63B2E752BAAFB71AB249 /* HeartRateBroadcaster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartRateBroadcaster.swift; sourceTree = "<group>"; };
 		4553E8A069AC1EC0B8542E13 /* GPXImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPXImporter.swift; sourceTree = "<group>"; };
 		4D691B6E315B6B33F4D0AE78 /* BikeCom.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BikeCom.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4DE48599CC89BD900D7590F1 /* PastCoursesMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastCoursesMapView.swift; sourceTree = "<group>"; };
@@ -139,6 +138,7 @@
 		802E1929F3A53B16347055A1 /* BLECSCManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLECSCManager.swift; sourceTree = "<group>"; };
 		82E09C914E9ADDB10A4A0D33 /* RideSaveProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSaveProgressView.swift; sourceTree = "<group>"; };
 		9FC89EF68FC1C44C1FB34847 /* HealthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStore.swift; sourceTree = "<group>"; };
+		A34438C57A0D6781F8A5ECBD /* HeartRateBroadcaster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartRateBroadcaster.swift; sourceTree = "<group>"; };
 		A5AD724CC74E317C6D46F8C3 /* RideSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSession.swift; sourceTree = "<group>"; };
 		AF7DBD0CD883641F0842A288 /* WatchSensorManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSensorManager.swift; sourceTree = "<group>"; };
 		B17041565BF52D1CCBB44D85 /* BikeComWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BikeComWatch.entitlements; sourceTree = "<group>"; };
@@ -191,7 +191,6 @@
 				28227D91B57B59C0894C652E /* Assets.xcassets */,
 				B17041565BF52D1CCBB44D85 /* BikeComWatch.entitlements */,
 				7F3B52AB80D4B405D89565A6 /* BikeComWatchApp.swift */,
-				43FC63B2E752BAAFB71AB249 /* HeartRateBroadcaster.swift */,
 				E4B24E4025AC97DAEDAB6F1C /* Info.plist */,
 				D4A44B7FF74AA23B117B2662 /* WatchContentView.swift */,
 				B3D835511AB6EDC0F5060D6F /* WorkoutManager.swift */,
@@ -286,6 +285,7 @@
 				4553E8A069AC1EC0B8542E13 /* GPXImporter.swift */,
 				9FC89EF68FC1C44C1FB34847 /* HealthStore.swift */,
 				F1EDD52253832C1C27244F7C /* HealthWorkoutImporter.swift */,
+				A34438C57A0D6781F8A5ECBD /* HeartRateBroadcaster.swift */,
 				258B0A3578A8CEBA8ACB581A /* LocationManager.swift */,
 				6533B0D069EA3631A29D8390 /* RideRecordMerge.swift */,
 				A5AD724CC74E317C6D46F8C3 /* RideSession.swift */,
@@ -537,7 +537,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				D2ED6DCBD9E2801FCFC2F9F1 /* BikeComWatchApp.swift in Sources */,
-				7E585F85F5B3B627FDB41977 /* HeartRateBroadcaster.swift in Sources */,
 				446FAED89CC1BDEFEB4AA3AF /* RideIntents.swift in Sources */,
 				51605083AE0552E9E6C93CA1 /* RideMetricsStore.swift in Sources */,
 				86EE96F7B15ABA04D9B018E7 /* RideUIComponents.swift in Sources */,
@@ -563,6 +562,7 @@
 				13015D344F31A4D12F22D770 /* GPXImporter.swift in Sources */,
 				F30C957150FB1ED37896EF20 /* HealthStore.swift in Sources */,
 				E14C0A8DB36D538EEDA28387 /* HealthWorkoutImporter.swift in Sources */,
+				055EA70E8661A067FCF59E3B /* HeartRateBroadcaster.swift in Sources */,
 				A5B52D04C34F1D4BC1E44AD0 /* LocationManager.swift in Sources */,
 				8720689EE0E49F6D0F2A33D8 /* MapTabView.swift in Sources */,
 				7F4FE873BD90516A1D6C1DA8 /* MetricCell.swift in Sources */,

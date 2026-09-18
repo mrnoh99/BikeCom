@@ -15,15 +15,15 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>GMSApiKey</key>
 	<string></string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>속도·케이던스(CSC)·심박 BLE 센서를 폰에 직접 연결하고, 페어링되지 않은 Apple Watch의 심박 브로드캐스트를 받습니다.</string>
+	<string>속도·케이던스(CSC)·심박 BLE 센서를 폰에 직접 연결하고, 받은 심박을 페어링되지 않은 다른 아이폰이 받을 수 있도록 다시 광고합니다.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>라이딩 종료 시 요약을 캘린더에 기록합니다.</string>
 	<key>NSHealthShareUsageDescription</key>

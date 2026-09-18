@@ -134,6 +134,14 @@ struct SensorSettingsView: View {
             Text("수신 상태")
         }
 
+        Section {
+            Toggle("심박 중계만 켜기", isOn: $session.heartRateRelayOnly)
+        } header: {
+            Text("심박 중계")
+        } footer: {
+            Text("라이딩(GPS·거리 기록)을 시작하지 않고도, 지금 받고 있는 심박(Apple Watch 또는 폰 BLE)을 표준 BLE로 재광고합니다. 다른 아이폰이 ⚙️ → 센서 → 심박 센서(폰 BLE)로 페어링 없이 이 폰을 거쳐 심박을 받을 수 있습니다. 워치 심박은 워치 앱(또는 컴플리케이션)에서 직접 시작해야 값이 들어옵니다. 라이딩을 시작하면 이 토글과 무관하게 항상 중계됩니다.")
+        }
+
         SensorWatchConnectionSection(watch: session.watch)
 
         SensorBLESection(ble: session.ble, unit: session.unit, sensorMode: session.sensorMode)
@@ -368,9 +376,9 @@ private struct SensorBLESection: View {
     }
 }
 
-/// 폰 BLE 심박 센서 — 표준 BLE 심박 스트랩뿐 아니라, 페어링되지 않은 다른 아이폰의
-/// Apple Watch(BikeCom 워치 앱이 `HeartRateBroadcaster` 로 브로드캐스트 중)도 여기서
-/// 스캔·연결해 심박을 받을 수 있다.
+/// 폰 BLE 심박 센서 — 표준 BLE 심박 스트랩뿐 아니라, 페어링되지 않은 다른 아이폰
+/// (BikeCom 을 실행 중이며 `HeartRateBroadcaster` 로 자신이 받은 심박을 재광고하는 폰)
+/// 도 여기서 스캔·연결해 심박을 받을 수 있다.
 private struct SensorBLEHeartRateSection: View {
     @ObservedObject var bleHR: BLEHeartRateManager
 
@@ -409,7 +417,7 @@ private struct SensorBLEHeartRateSection: View {
         } header: {
             Text("심박 센서(폰 BLE)")
         } footer: {
-            Text("표준 BLE 심박 스트랩 또는 페어링되지 않은 다른 아이폰의 Apple Watch(BikeCom 워치 앱 실행 중) 브로드캐스트를 직접 수신합니다. Apple Watch가 이 폰과 페어링돼 있으면(WatchConnectivity) 그쪽을 우선 사용하고, 여기 연결은 보조/대체 경로로만 쓰입니다.")
+            Text("표준 BLE 심박 스트랩 또는 페어링되지 않은 다른 아이폰(BikeCom 실행 중, 라이딩하며 자신의 심박을 재광고)의 브로드캐스트를 직접 수신합니다. Apple Watch가 이 폰과 페어링돼 있으면(WatchConnectivity) 그쪽을 우선 사용하고, 여기 연결은 보조/대체 경로로만 쓰입니다.")
         }
     }
 
