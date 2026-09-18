@@ -133,7 +133,7 @@ struct DashboardView: View {
         // 0.5초 tick 에 재렌더되지 않는다(재렌더는 주행 화면에만 한정).
         return TimelineView(.periodic(from: .now, by: 1)) { ctx in
             let cadConnected = session.cadenceSensorConnected
-            let hrConnected = session.watch.heartRateConnected
+            let hrConnected = session.watch.heartRateConnected || session.bleHeartRate.connected
             VStack(spacing: 0) {
             metricRow {
                 MetricCell(label: "Clock", value: clockFormatter.string(from: ctx.date).prefix5,
@@ -301,9 +301,9 @@ struct DashboardView: View {
         }
     }
 
-    /// 연결안됨=회색, 워치연결=파랑, 폰연결=초록.
+    /// 연결안됨=회색, 연결됨(워치 또는 폰 BLE)=빨강.
     private var hrDotColor: Color {
-        session.watch.heartRateConnected ? Theme.red : Color.gray
+        (session.watch.heartRateConnected || session.bleHeartRate.connected) ? Theme.red : Color.gray
     }
     private var spdDotColor: Color {
         switch session.sensorMode {
