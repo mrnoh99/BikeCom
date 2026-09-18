@@ -10,13 +10,22 @@ struct RideSaveProgressView: View {
         }
     }
 
+    // 확인 버튼(footer)은 화면 하단에 항상 고정하고, 나머지만 스크롤되게 한다 —
+    // 작은 화면(iPhone SE 2세대 등)에서 medium 시트 높이보다 내용이 길면
+    // 버튼이 화면 밖으로 밀려 안 보이는 문제 방지.
     private func content(_ progress: RideSession.RideSaveProgress) -> some View {
-        VStack(spacing: 20) {
-            header(progress)
-            stepList(progress)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 20) {
+                    header(progress)
+                    stepList(progress)
+                }
+                .padding(24)
+            }
             footer(progress)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
         }
-        .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         .interactiveDismissDisabled(!progress.isComplete)
