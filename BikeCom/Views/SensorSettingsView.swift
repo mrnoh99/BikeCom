@@ -134,6 +134,14 @@ struct SensorSettingsView: View {
             Text("수신 상태")
         }
 
+        Section {
+            Toggle("심박 중계만 켜기", isOn: $session.heartRateRelayOnly)
+        } header: {
+            Text("심박 중계")
+        } footer: {
+            Text("라이딩(GPS·거리 기록)을 시작하지 않고도, 지금 받고 있는 심박(Apple Watch 또는 폰 BLE)을 표준 BLE로 재광고합니다. 다른 아이폰이 ⚙️ → 센서 → 심박 센서(폰 BLE)로 페어링 없이 이 폰을 거쳐 심박을 받을 수 있습니다. 워치 심박은 워치 앱(또는 컴플리케이션)에서 직접 시작해야 값이 들어옵니다. 라이딩을 시작하면 이 토글과 무관하게 항상 중계됩니다.")
+        }
+
         SensorWatchConnectionSection(watch: session.watch)
 
         SensorBLESection(ble: session.ble, unit: session.unit, sensorMode: session.sensorMode)

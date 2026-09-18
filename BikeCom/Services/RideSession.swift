@@ -570,11 +570,23 @@ final class RideSession: ObservableObject {
     @Published private(set) var state: RideState = .idle {
         didSet {
             updateScreenAwake()
-            if state != .idle, oldValue == .idle {
-                HeartRateBroadcaster.shared.start()
-            } else if state == .idle, oldValue != .idle {
-                HeartRateBroadcaster.shared.stop()
-            }
+            updateHeartRateBroadcast()
+        }
+    }
+
+    /// 라이딩(GPS·거리 기록)을 시작하지 않고 지금 받고 있는 심박(워치 또는 폰 BLE)만
+    /// BLE 로 재광고. ⚙️ → 센서 화면의 토글로 켠다.
+    @Published var heartRateRelayOnly = false {
+        didSet { updateHeartRateBroadcast() }
+    }
+
+    /// 라이딩 중이거나 심박 중계만 켜져 있으면 브로드캐스터를 켜고, 둘 다 아니면 끈다.
+    /// start()/stop() 은 idempotent 라 중복 호출해도 안전하다.
+    private func updateHeartRateBroadcast() {
+        if state != .idle || heartRateRelayOnly {
+            HeartRateBroadcaster.shared.start()
+        } else {
+            HeartRateBroadcaster.shared.stop()
         }
     }
     /// 라이브 주행 지표 — 0.5초 tick 으로 갱신되지만 @Published 가 아니어서 session 의
