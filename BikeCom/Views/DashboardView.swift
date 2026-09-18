@@ -343,10 +343,26 @@ struct DashboardView: View {
                         .background(Capsule().fill(Theme.gray))
                 }
             }
+            heartRateRelayToggle(layout)
             settingsMenu(layout)
         }
         .padding(.horizontal, layout.headerHPadding)
         .padding(.vertical, layout.controlVPadding)
+    }
+
+    /// Start 줄에 끼워 넣은 심박 중계 켜기/끄기(RideSession.heartRateRelayOnly).
+    /// 라이딩을 시작하지 않고도 지금 받는 심박(워치·폰 BLE)을 BLE로 재광고할지 바로 전환한다.
+    /// Start(+Done) 버튼이 maxWidth: .infinity 라, 이 버튼을 끼우면 그만큼 자동으로 줄어든다.
+    private func heartRateRelayToggle(_ layout: DeviceLayout.Dashboard) -> some View {
+        Button {
+            session.heartRateRelayOnly.toggle()
+        } label: {
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .font(.system(size: layout.gearIcon * 0.9, weight: .semibold))
+                .foregroundColor(session.heartRateRelayOnly ? .black : Theme.label)
+                .frame(width: layout.gearIcon * 1.5 + 24, height: layout.controlHeight)
+                .background(Capsule().fill(session.heartRateRelayOnly ? Theme.red : Color(white: 0.16)))
+        }
     }
 
     /// 상단 코스·자전거 Menu 와 같은 풀다운 방식.
