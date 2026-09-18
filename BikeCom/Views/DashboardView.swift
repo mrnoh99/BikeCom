@@ -386,7 +386,7 @@ struct DashboardView: View {
 
     // 하단 크레딧(가운데 정렬). GPS 표시는 상단 상태 줄로 이동했다.
     private func gpsBar(_ layout: DeviceLayout.Dashboard) -> some View {
-        Text("Developed by JaiSung NOH MD 2026")
+        Text("Developed by JaiSung NOH MD 2026 · \(appVersionText)")
             .font(.system(size: layout.footerFont))
             .foregroundColor(Theme.label)
             .lineLimit(1)
@@ -394,6 +394,14 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, layout.headerHPadding)
             .padding(.bottom, 2)
+    }
+
+    /// "v1.0 build 2" — 번들의 CFBundleShortVersionString·CFBundleVersion 을 그대로 읽는다
+    /// (project.yml 의 MARKETING_VERSION/CURRENT_PROJECT_VERSION 이 유일한 값 소스).
+    private var appVersionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "v\(version) build \(build)"
     }
 
     private var gpsColor: Color {
