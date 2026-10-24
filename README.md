@@ -37,14 +37,20 @@
   없고 센트럴(스캔) 역할만 지원한다. 그래서 광고는 항상 **폰**이 한다(라이딩 중이면 자동 시작).
   폰은 자기 자신과 페어링된 워치가 있으면 WCSession 값을 우선하고, 없을 때만 폰 BLE 값(`BLEHeartRateManager`)
   으로 대체 — 그 최종값을 다시 `HeartRateBroadcaster` 로 광고한다.
-- **심박 측정 이어버즈(Powerbeats Pro 2 등)**: Beats 앱에서 심박 모니터링을 켜두면 표준 BLE 심박
-  서비스(`0x180D`)로 광고하므로, 별도 연동 코드 없이 위와 같은 **심박 센서(폰 BLE)** 스캔으로 바로
-  잡힌다. `BLEHeartRateManager`/`SensorSettingsView`가 기기 이름에 `powerbeats`/`beats`가 포함되면
-  이어버즈 아이콘으로 구분해 표시하고, 상태 표시에도 `(이어버즈)`로 출처를 밝힌다.
-  일부 이어버즈는 애드버타이즈 패킷에 심박 서비스 UUID를 싣지 않아 서비스 필터 스캔으로는 안 보일 수
-  있어, 스캔은 서비스 UUID 없이 전체 탐색 후 "심박 서비스 광고" 또는 "이름이 powerbeats/beats" 기기만
-  골라 보여준다. 연결 후에도 실제 0x180D 서비스가 없으면(`serviceUnsupported`) 설정 화면에 바로
-  안내 문구를 띄운다.
+- **심박 측정 이어버즈(Powerbeats Pro 2 등)**: 두 가지 경로가 있다.
+  1. **BLE 직결("운동 기구 연결" 모드)**: 이어버드 한쪽 b버튼을 **두 번 누르고 그대로 유지**(차임음
+     확인) → `Powerbeats HR`이라는 이름으로 표준 BLE 심박 서비스(`0x180D`)를 광고 → ⚙️ → 센서 →
+     **심박 센서(폰 BLE)** 스캔으로 잡힌다. `BLEHeartRateManager`/`SensorSettingsView`가 기기 이름에
+     `powerbeats`/`beats`가 포함되면 이어버즈 아이콘으로 구분 표시한다. 일부 이어버즈는 애드버타이즈
+     패킷에 서비스 UUID를 안 실어서, 스캔은 서비스 필터 없이 전체 탐색 후 "심박 서비스 광고" 또는
+     "이름이 powerbeats/beats" 기기만 골라 보여준다. 연결 후 실제 0x180D 서비스가 없으면
+     (`serviceUnsupported`) 설정 화면에 안내 문구를 띄운다.
+     ⚠️ **이 모드는 iPhone과의 오디오 연결을 끊는다**(Apple 공식 사양) — 음악 재생과 동시에 못 쓴다.
+  2. **HealthKit 경유(`HealthKitHeartRateManager`, 음악 재생과 동시 사용 가능)**: 이어버즈를 평소처럼
+     음악용으로 페어링해둔 채, 폰이 자체 `HKWorkoutSession`(iOS 26+)을 띄우면 Beats 펌웨어가 알아서
+     HealthKit으로 심박을 흘려보낸다. Beats 앱 "심박 모니터링"이 켜져 있어야 하고, ⚙️ → 센서 →
+     **이어버즈 심박(HealthKit)** 토글로 켠다. `finishWorkout()`은 호출하지 않아 Health 앱에 별도
+     운동 기록이 남지 않는다 — 순수 실시간 심박 파이프로만 쓴다(워치 쪽 `WorkoutManager`와 동일 패턴).
   라이딩(GPS·거리 기록)을 시작하지 않고 심박만 중계하고 싶으면 ⚙️ → 센서 → **심박 중계만 켜기**
   토글을 쓴다(`RideSession.heartRateRelayOnly`) — 워치 심박은 워치 앱/컴플리케이션에서 직접 시작해야
   값이 들어온다.

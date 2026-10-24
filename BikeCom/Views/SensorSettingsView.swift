@@ -127,7 +127,8 @@ struct SensorSettingsView: View {
                     statusRow("속도", value: activeSpeedText, active: session.speedSensorConnected)
                     statusRow("케이던스", value: activeCadenceText, active: session.cadenceSensorConnected)
                     statusRow("심박", value: heartRateText,
-                              active: session.watch.heartRateConnected || session.bleHeartRate.connected)
+                              active: session.watch.heartRateConnected || session.bleHeartRate.connected
+                                  || session.healthKitHeartRate.bpm > 0)
                 }
             }
         } header: {
@@ -147,6 +148,8 @@ struct SensorSettingsView: View {
         SensorBLESection(ble: session.ble, unit: session.unit, sensorMode: session.sensorMode)
 
         SensorBLEHeartRateSection(bleHR: session.bleHeartRate)
+
+        SensorEarbudsHeartRateSection(session: session)
 
         Section {
             Stepper(value: $session.wheelCircumferenceMeters, in: 1.000...2.500, step: 0.005) {
@@ -224,6 +227,9 @@ struct SensorSettingsView: View {
         if session.bleHeartRate.connected {
             let source = session.bleHeartRate.connectedName.map(BLEHeartRateManager.isLikelyEarbuds) == true ? "이어버즈" : "BLE"
             return "\(session.bleHeartRate.bpm) bpm (\(source))"
+        }
+        if session.healthKitHeartRate.bpm > 0 {
+            return "\(session.healthKitHeartRate.bpm) bpm (이어버즈·HealthKit)"
         }
         return "수신 대기"
     }
@@ -428,7 +434,40 @@ private struct SensorBLEHeartRateSection: View {
         } header: {
             Text("심박 센서(폰 BLE)")
         } footer: {
-            Text("표준 BLE 심박 스트랩, Powerbeats Pro 2 같은 심박 측정 이어버즈, 또는 페어링되지 않은 다른 아이폰(BikeCom 실행 중, 라이딩하며 자신의 심박을 재광고)의 브로드캐스트를 직접 수신합니다. 이어버즈는 Beats 앱에서 심박 모니터링을 먼저 켜야 스캔에 나타납니다. Apple Watch가 이 폰과 페어링돼 있으면(WatchConnectivity) 그쪽을 우선 사용하고, 여기 연결은 보조/대체 경로로만 쓰입니다.")
+            Text("표준 BLE 심박 스트랩, 또는 페어링되지 않은 다른 아이폰(BikeCom 실행 중, 라이딩하며 자신의 심박을 재광고)의 브로드캐스트를 직접 수신합니다. Powerbeats Pro 2 같은 이어버즈는 한쪽 b버튼을 두 번 누르고 그대로 유지(차임음 확인)해야 \"운동 기구 연결\" 모드로 들어가 여기서 스캔됩니다 — 단, 이 모드는 iPhone과의 오디오 연결을 끊습니다(Apple 공식 사양). 음악을 들으며 동시에 심박을 받으려면 아래 \"이어버즈 심박(HealthKit)\"을 쓰세요. Apple Watch가 이 폰과 페어링돼 있으면(WatchConnectivity) 그쪽을 우선 사용합니다.")
+        }
+    }
+
+    private func row(_ label: String, value: String, active: Bool) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value).foregroundColor(active ? Theme.green : .secondary)
+        }
+    }
+}
+
+/// 심박 측정 이어버즈(Powerbeats Pro 2 등)를 HealthKit 워크아웃 세션 경유로 수신 — BLE
+/// 직결(`SensorBLEHeartRateSection`)과 달리 음악 재생을 끊지 않고 동시에 받을 수 있다.
+private struct SensorEarbudsHeartRateSection: View {
+    @ObservedObject var session: RideSession
+
+    var body: some View {
+        Section {
+            Toggle("이어버즈 심박(HealthKit) 사용", isOn: $session.earbudsHeartRateEnabled)
+            if session.earbudsHeartRateEnabled {
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    row("수신", value: session.healthKitHeartRate.bpm > 0 ? "\(session.healthKitHeartRate.bpm) bpm" : "수신 대기",
+                        active: session.healthKitHeartRate.bpm > 0)
+                }
+                if let err = session.healthKitHeartRate.lastError {
+                    Text(err).font(.caption).foregroundColor(Theme.red)
+                }
+            }
+        } header: {
+            Text("이어버즈 심박(HealthKit)")
+        } footer: {
+            Text("폰이 자체 워크아웃 세션을 띄워 Powerbeats Pro 2 등 이어버즈의 심박을 HealthKit으로 받습니다. 평소처럼 음악 재생용으로 페어링해둔 채로 동작하며(오디오 연결 유지), Beats 앱에서 \"심박 모니터링\"이 켜져 있어야 합니다. iOS 26 이상 필요.")
         }
     }
 
