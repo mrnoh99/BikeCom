@@ -222,16 +222,10 @@ struct SensorSettingsView: View {
             return "\(bpm) bpm (Watch)"
         }
         if session.bleHeartRate.connected {
-            let source = session.bleHeartRate.connectedName.map(Self.isEarbudsName) == true ? "이어버즈" : "BLE"
+            let source = session.bleHeartRate.connectedName.map(BLEHeartRateManager.isLikelyEarbuds) == true ? "이어버즈" : "BLE"
             return "\(session.bleHeartRate.bpm) bpm (\(source))"
         }
         return "수신 대기"
-    }
-
-    /// Powerbeats Pro 2 등 심박 측정 이어버즈 이름 판별(아이콘·표시용).
-    fileprivate static func isEarbudsName(_ name: String) -> Bool {
-        let n = name.lowercased()
-        return n.contains("powerbeats") || n.contains("beats")
     }
 
     private func statusRow(_ label: String, value: String, active: Bool) -> some View {
@@ -393,12 +387,18 @@ private struct SensorBLEHeartRateSection: View {
         Section {
             if let name = bleHR.connectedName {
                 HStack {
-                    Label("연결됨", systemImage: SensorSettingsView.isEarbudsName(name) ? "earbuds" : "heart.fill")
+                    Label("연결됨", systemImage: BLEHeartRateManager.isLikelyEarbuds(name) ? "earbuds" : "heart.fill")
                     Spacer()
                     Text(name).foregroundColor(Theme.green)
                 }
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    row("수신", value: bleHR.connected ? "\(bleHR.bpm) bpm" : "수신 대기", active: bleHR.connected)
+                if bleHR.serviceUnsupported {
+                    Text("이 기기에서 표준 심박 서비스를 찾지 못했습니다. 이어버즈라면 Beats 앱에서 심박 모니터링이 켜져 있는지 확인해 주세요.")
+                        .font(.caption)
+                        .foregroundColor(Theme.red)
+                } else {
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        row("수신", value: bleHR.connected ? "\(bleHR.bpm) bpm" : "수신 대기", active: bleHR.connected)
+                    }
                 }
                 Button(role: .destructive) { bleHR.forget() } label: {
                     Label("연결 해제·저장 삭제", systemImage: "xmark.circle")
@@ -410,7 +410,7 @@ private struct SensorBLEHeartRateSection: View {
                 ForEach(bleHR.discovered) { dev in
                     Button { bleHR.connect(dev.id) } label: {
                         HStack {
-                            Label(dev.name, systemImage: SensorSettingsView.isEarbudsName(dev.name) ? "earbuds" : "heart.fill")
+                            Label(dev.name, systemImage: BLEHeartRateManager.isLikelyEarbuds(dev.name) ? "earbuds" : "heart.fill")
                             Spacer()
                             Image(systemName: "link")
                         }

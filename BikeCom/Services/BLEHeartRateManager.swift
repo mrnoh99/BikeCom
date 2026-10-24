@@ -19,6 +19,8 @@ final class BLEHeartRateManager: NSObject, ObservableObject {
     @Published private(set) var scanning = false
     @Published private(set) var discovered: [Found] = []
     @Published private(set) var connectedName: String?
+    /// 연결은 됐지만 기기가 표준 심박 서비스(0x180D)를 노출하지 않는 경우(true).
+    @Published private(set) var serviceUnsupported = false
 
     struct Found: Identifiable, Equatable {
         let id: UUID
@@ -44,7 +46,9 @@ final class BLEHeartRateManager: NSObject, ObservableObject {
         guard poweredOn else { return }
         discovered = []
         scanning = true
-        central.scanForPeripherals(withServices: [Self.heartRateService], options: nil)
+        // 서비스 UUID 미지정 전체 스캔: Powerbeats Pro 2 같은 이어버즈는 애드버타이즈 패킷에
+        // 심박 서비스(0x180D)를 싣지 않는 경우가 있어, 이름으로도 함께 걸러낸다(didDiscover 참고).
+        central.scanForPeripherals(withServices: nil, options: nil)
     }
 
     func stopScan() {
@@ -100,7 +104,7 @@ final class BLEHeartRateManager: NSObject, ObservableObject {
         if let s = p.services?.first(where: { $0.uuid == Self.heartRateService }) {
             p.discoverCharacteristics([Self.heartRateMeasurement], for: s)
         } else {
-            p.discoverServices([Self.heartRateService])
+            p.discoverServices(nil)
         }
     }
 
@@ -108,6 +112,7 @@ final class BLEHeartRateManager: NSObject, ObservableObject {
         connectedName = nil
         bpm = 0
         connected = false
+        serviceUnsupported = false
     }
 
     private func decayIfStale() {
@@ -150,13 +155,24 @@ extension BLEHeartRateManager: CBCentralManagerDelegate {
         let name = p.name
             ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
             ?? "심박 센서"
+        let advertisesHR = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID])?
+            .contains(Self.heartRateService) ?? false
+        guard advertisesHR || Self.isLikelyEarbuds(name) else { return }
         let f = Found(id: p.identifier, name: name)
         if !discovered.contains(f) { discovered.append(f) }
     }
 
+    /// Powerbeats Pro 2 등, 애드버타이즈 패킷에 심박 서비스를 싣지 않는 이어버즈를
+    /// 이름으로 보조 식별(연결 후 실제 0x180D 서비스가 있는지는 `discoverServices`에서 확인).
+    static func isLikelyEarbuds(_ name: String) -> Bool {
+        let n = name.lowercased()
+        return n.contains("powerbeats") || n.contains("beats")
+    }
+
     func centralManager(_ c: CBCentralManager, didConnect p: CBPeripheral) {
         connectedName = p.name ?? connectedName
-        p.discoverServices([Self.heartRateService])
+        serviceUnsupported = false
+        p.discoverServices(nil)
     }
 
     func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
@@ -173,7 +189,10 @@ extension BLEHeartRateManager: CBCentralManagerDelegate {
 
 extension BLEHeartRateManager: CBPeripheralDelegate {
     func peripheral(_ p: CBPeripheral, didDiscoverServices error: Error?) {
-        guard let s = p.services?.first(where: { $0.uuid == Self.heartRateService }) else { return }
+        guard let s = p.services?.first(where: { $0.uuid == Self.heartRateService }) else {
+            serviceUnsupported = true
+            return
+        }
         p.discoverCharacteristics([Self.heartRateMeasurement], for: s)
     }
 
