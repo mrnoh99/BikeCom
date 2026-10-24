@@ -296,7 +296,12 @@ struct GoogleLiveMap: UIViewRepresentable {
     var recenterToken: Int = 0
 
     func makeUIView(context: Context) -> GMSMapView {
-        let map = GMSMapView()
+        // GMSMapView() 기본 카메라는 (0,0) 근처 최대 축소 상태라, GPS 가 아직 안 잡혔을 때
+        // 사실상 빈 화면처럼 보인다(Apple 지도 쪽 RouteMap 은 Seoul 기본 region 이 있어 이 문제가
+        // 없다). userLocation 이 있으면 그 위치로, 없으면 Apple 지도와 같은 기본값(서울)으로 시작.
+        let start = userLocation ?? CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
+        let map = GMSMapView(frame: .zero)
+        map.camera = GMSCameraPosition(target: start, zoom: userLocation != nil ? 16 : 11)
         map.mapType = .normal
         map.isMyLocationEnabled = true
         map.settings.myLocationButton = true
@@ -371,6 +376,11 @@ struct NaverLiveMap: UIViewRepresentable {
 
     func makeUIView(context: Context) -> NMFMapView {
         let map = NMFMapView(frame: .zero)
+        // GoogleLiveMap 과 동일한 이유: GPS 가 아직 안 잡혔을 때 기본 카메라 위치가 사용자
+        // 기대와 다른 곳(또는 과한 축소)일 수 있어, Apple 지도와 같은 기본값(서울)으로 시작.
+        let start = NMGLatLng(lat: userLocation?.latitude ?? 37.5665, lng: userLocation?.longitude ?? 126.9780)
+        map.zoomLevel = userLocation != nil ? 16 : 11
+        map.moveCamera(NMFCameraUpdate(scrollTo: start))
         map.mapType = .basic
         map.positionMode = .disabled   // 위치는 LocationManager 좌표로 직접 표시(중복 방지)
         map.locationOverlay.hidden = false
