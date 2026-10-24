@@ -37,6 +37,10 @@
   없고 센트럴(스캔) 역할만 지원한다. 그래서 광고는 항상 **폰**이 한다(라이딩 중이면 자동 시작).
   폰은 자기 자신과 페어링된 워치가 있으면 WCSession 값을 우선하고, 없을 때만 폰 BLE 값(`BLEHeartRateManager`)
   으로 대체 — 그 최종값을 다시 `HeartRateBroadcaster` 로 광고한다.
+- **심박 측정 이어버즈(Powerbeats Pro 2 등)**: Beats 앱에서 심박 모니터링을 켜두면 표준 BLE 심박
+  서비스(`0x180D`)로 광고하므로, 별도 연동 코드 없이 위와 같은 **심박 센서(폰 BLE)** 스캔으로 바로
+  잡힌다. `BLEHeartRateManager`/`SensorSettingsView`가 기기 이름에 `powerbeats`/`beats`가 포함되면
+  이어버즈 아이콘으로 구분해 표시하고, 상태 표시에도 `(이어버즈)`로 출처를 밝힌다.
   라이딩(GPS·거리 기록)을 시작하지 않고 심박만 중계하고 싶으면 ⚙️ → 센서 → **심박 중계만 켜기**
   토글을 쓴다(`RideSession.heartRateRelayOnly`) — 워치 심박은 워치 앱/컴플리케이션에서 직접 시작해야
   값이 들어온다.
