@@ -583,8 +583,11 @@ final class RideSession: ObservableObject {
 
     /// 심박 측정 이어버즈(Powerbeats Pro 2 등)를 HealthKit 워크아웃 세션 경유로 수신.
     /// BLE 직결과 달리 음악 재생과 동시에 쓸 수 있다. ⚙️ → 센서 화면의 토글로 켠다.
-    @Published var earbudsHeartRateEnabled = false {
+    /// 기본값 켜짐(처음 실행 시 자동 시작) — 값은 UserDefaults 에 영속.
+    @Published var earbudsHeartRateEnabled =
+        (UserDefaults.standard.object(forKey: "bike.earbudsHeartRateEnabled") as? Bool) ?? true {
         didSet {
+            UserDefaults.standard.set(earbudsHeartRateEnabled, forKey: "bike.earbudsHeartRateEnabled")
             if earbudsHeartRateEnabled {
                 healthKitHeartRate.start()
             } else {
@@ -703,6 +706,8 @@ final class RideSession: ObservableObject {
 
         location.requestAuthorization()
         watch.requestAuthorization()
+        // didSet 은 프로퍼티 초기값 설정 시 호출되지 않으므로, 기본 켜짐 상태를 여기서 반영.
+        if earbudsHeartRateEnabled { healthKitHeartRate.start() }
 
         // 워치 DISCONNECT(폰 주행 중)만 종료 요청. CONNECT 는 워치에서 센서만 켜고 폰 Start 와 분리.
         watch.onWatchRequest = { [weak self] start in

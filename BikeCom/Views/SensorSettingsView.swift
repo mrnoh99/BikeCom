@@ -467,7 +467,7 @@ private struct SensorEarbudsHeartRateSection: View {
         } header: {
             Text("이어버즈 심박(HealthKit)")
         } footer: {
-            Text("폰이 자체 워크아웃 세션을 띄워 Powerbeats Pro 2 등 이어버즈의 심박을 HealthKit으로 받습니다. 평소처럼 음악 재생용으로 페어링해둔 채로 동작하며(오디오 연결 유지), Beats 앱에서 \"심박 모니터링\"이 켜져 있어야 합니다. iOS 26 이상 필요.")
+            Text("폰이 자체 워크아웃 세션을 띄워 Powerbeats Pro 2 등 이어버즈의 심박을 HealthKit으로 받습니다. 평소처럼 음악 재생용으로 페어링해둔 채로 동작하며(오디오 연결 유지), Beats 앱에서 \"심박 모니터링\"이 켜져 있어야 합니다. iOS 26 이상 필요. 기본적으로 켜져 있으며, 앱을 켤 때마다 자동으로 시작됩니다.")
         }
     }
 

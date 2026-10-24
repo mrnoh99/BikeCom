@@ -49,8 +49,10 @@
   2. **HealthKit 경유(`HealthKitHeartRateManager`, 음악 재생과 동시 사용 가능)**: 이어버즈를 평소처럼
      음악용으로 페어링해둔 채, 폰이 자체 `HKWorkoutSession`(iOS 26+)을 띄우면 Beats 펌웨어가 알아서
      HealthKit으로 심박을 흘려보낸다. Beats 앱 "심박 모니터링"이 켜져 있어야 하고, ⚙️ → 센서 →
-     **이어버즈 심박(HealthKit)** 토글로 켠다. `finishWorkout()`은 호출하지 않아 Health 앱에 별도
-     운동 기록이 남지 않는다 — 순수 실시간 심박 파이프로만 쓴다(워치 쪽 `WorkoutManager`와 동일 패턴).
+     **이어버즈 심박(HealthKit)** 토글로 켠다 — **기본값은 켜짐**이라 앱을 켤 때마다 자동으로
+     시작된다(`RideSession.earbudsHeartRateEnabled`, UserDefaults 영속). `finishWorkout()`은
+     호출하지 않아 Health 앱에 별도 운동 기록이 남지 않는다 — 순수 실시간 심박 파이프로만 쓴다
+     (워치 쪽 `WorkoutManager`와 동일 패턴).
   라이딩(GPS·거리 기록)을 시작하지 않고 심박만 중계하고 싶으면 ⚙️ → 센서 → **심박 중계만 켜기**
   토글을 쓴다(`RideSession.heartRateRelayOnly`) — 워치 심박은 워치 앱/컴플리케이션에서 직접 시작해야
   값이 들어온다.
