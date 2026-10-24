@@ -134,6 +134,7 @@ struct DashboardView: View {
         return TimelineView(.periodic(from: .now, by: 1)) { ctx in
             let cadConnected = session.cadenceSensorConnected
             let hrConnected = session.watch.heartRateConnected || session.bleHeartRate.connected
+                || session.healthKitHeartRate.bpm > 0
             VStack(spacing: 0) {
             metricRow {
                 MetricCell(label: "Clock", value: clockFormatter.string(from: ctx.date).prefix5,
@@ -303,7 +304,8 @@ struct DashboardView: View {
 
     /// 연결안됨=회색, 연결됨(워치 또는 폰 BLE)=빨강.
     private var hrDotColor: Color {
-        (session.watch.heartRateConnected || session.bleHeartRate.connected) ? Theme.red : Color.gray
+        (session.watch.heartRateConnected || session.bleHeartRate.connected
+            || session.healthKitHeartRate.bpm > 0) ? Theme.red : Color.gray
     }
     private var spdDotColor: Color {
         switch session.sensorMode {

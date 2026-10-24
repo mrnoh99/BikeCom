@@ -112,6 +112,8 @@ targets:
         UIBackgroundModes:
           - location
           - bluetooth-central
+          # 이어버즈 심박(HealthKit 워크아웃 세션) 수신 중 화면이 꺼져도 세션 유지.
+          - workout-processing
         # 라이딩 백업 파일을 Files 앱에서 열람·복사 가능하게(재설치 대비).
         # Info.plist 가 xcodegen 으로 재생성돼도 유지되도록 여기에도 둔다.
         UIFileSharingEnabled: true

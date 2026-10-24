@@ -50,6 +50,7 @@ final class RideSession: ObservableObject {
     let watch = WatchSensorManager()   // 애플워치 심박·속도·케이던스(중계, 페어링된 폰 전용)
     let ble = BLECSCManager()          // 폰 직결 BLE 속도·케이던스(CSC) 센서
     let bleHeartRate = BLEHeartRateManager()   // 폰 직결 BLE 심박(스트랩 또는 미페어링 워치 브로드캐스트)
+    let healthKitHeartRate = HealthKitHeartRateManager()   // 폰 워크아웃 세션 경유 심박(이어버즈, 음악 재생과 동시 사용 가능)
     let health = HealthStore()          // Apple Health 누적 거리 + 폰 단독 워크아웃 저장
     let calendarLogger = CalendarLogger()   // Done 시 캘린더에 운동 요약 기록
     let healthImporter = HealthWorkoutImporter()   // 건강의 사이클링 워크아웃 가져오기
@@ -580,6 +581,18 @@ final class RideSession: ObservableObject {
         didSet { updateHeartRateBroadcast() }
     }
 
+    /// 심박 측정 이어버즈(Powerbeats Pro 2 등)를 HealthKit 워크아웃 세션 경유로 수신.
+    /// BLE 직결과 달리 음악 재생과 동시에 쓸 수 있다. ⚙️ → 센서 화면의 토글로 켠다.
+    @Published var earbudsHeartRateEnabled = false {
+        didSet {
+            if earbudsHeartRateEnabled {
+                healthKitHeartRate.start()
+            } else {
+                healthKitHeartRate.stop()
+            }
+        }
+    }
+
     /// 라이딩 중이거나 심박 중계만 켜져 있으면 브로드캐스터를 켜고, 둘 다 아니면 끈다.
     /// start()/stop() 은 idempotent 라 중복 호출해도 안전하다.
     private func updateHeartRateBroadcast() {
@@ -671,6 +684,13 @@ final class RideSession: ObservableObject {
         bleHeartRate.$bpm
             .sink { [weak self] bpm in
                 guard let self, !self.watch.heartRateConnected else { return }
+                self.ingestHeartRate(bpm > 0 ? bpm : nil)
+            }
+            .store(in: &cancellables)
+
+        healthKitHeartRate.$bpm
+            .sink { [weak self] bpm in
+                guard let self, !self.watch.heartRateConnected, !self.bleHeartRate.connected else { return }
                 self.ingestHeartRate(bpm > 0 ? bpm : nil)
             }
             .store(in: &cancellables)
