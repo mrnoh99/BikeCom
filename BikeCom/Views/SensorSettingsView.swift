@@ -222,9 +222,16 @@ struct SensorSettingsView: View {
             return "\(bpm) bpm (Watch)"
         }
         if session.bleHeartRate.connected {
-            return "\(session.bleHeartRate.bpm) bpm (BLE)"
+            let source = session.bleHeartRate.connectedName.map(Self.isEarbudsName) == true ? "이어버즈" : "BLE"
+            return "\(session.bleHeartRate.bpm) bpm (\(source))"
         }
         return "수신 대기"
+    }
+
+    /// Powerbeats Pro 2 등 심박 측정 이어버즈 이름 판별(아이콘·표시용).
+    fileprivate static func isEarbudsName(_ name: String) -> Bool {
+        let n = name.lowercased()
+        return n.contains("powerbeats") || n.contains("beats")
     }
 
     private func statusRow(_ label: String, value: String, active: Bool) -> some View {
@@ -385,7 +392,11 @@ private struct SensorBLEHeartRateSection: View {
     var body: some View {
         Section {
             if let name = bleHR.connectedName {
-                row("연결됨", value: name, active: true)
+                HStack {
+                    Label("연결됨", systemImage: SensorSettingsView.isEarbudsName(name) ? "earbuds" : "heart.fill")
+                    Spacer()
+                    Text(name).foregroundColor(Theme.green)
+                }
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     row("수신", value: bleHR.connected ? "\(bleHR.bpm) bpm" : "수신 대기", active: bleHR.connected)
                 }
@@ -399,7 +410,7 @@ private struct SensorBLEHeartRateSection: View {
                 ForEach(bleHR.discovered) { dev in
                     Button { bleHR.connect(dev.id) } label: {
                         HStack {
-                            Label(dev.name, systemImage: "heart.fill")
+                            Label(dev.name, systemImage: SensorSettingsView.isEarbudsName(dev.name) ? "earbuds" : "heart.fill")
                             Spacer()
                             Image(systemName: "link")
                         }
@@ -417,7 +428,7 @@ private struct SensorBLEHeartRateSection: View {
         } header: {
             Text("심박 센서(폰 BLE)")
         } footer: {
-            Text("표준 BLE 심박 스트랩 또는 페어링되지 않은 다른 아이폰(BikeCom 실행 중, 라이딩하며 자신의 심박을 재광고)의 브로드캐스트를 직접 수신합니다. Apple Watch가 이 폰과 페어링돼 있으면(WatchConnectivity) 그쪽을 우선 사용하고, 여기 연결은 보조/대체 경로로만 쓰입니다.")
+            Text("표준 BLE 심박 스트랩, Powerbeats Pro 2 같은 심박 측정 이어버즈, 또는 페어링되지 않은 다른 아이폰(BikeCom 실행 중, 라이딩하며 자신의 심박을 재광고)의 브로드캐스트를 직접 수신합니다. 이어버즈는 Beats 앱에서 심박 모니터링을 먼저 켜야 스캔에 나타납니다. Apple Watch가 이 폰과 페어링돼 있으면(WatchConnectivity) 그쪽을 우선 사용하고, 여기 연결은 보조/대체 경로로만 쓰입니다.")
         }
     }
 
