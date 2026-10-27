@@ -222,5 +222,12 @@ BikeComWatch/                  # 애플워치 앱
   심박·최대 케이던스 + 경로)을 Routes 로 채움(이미 건강에 있을 때 최선). ② **Cyclemeter GPX 가져오기** —
   여러 `.gpx` 파일/폴더 선택(건강에 없거나 경로 없는 기록용). 둘 다 **시작시각 중복 제외**.
   누적 거리는 건강 기준이라 ①은 이미 반영되어 있고 가져오기는 Routes 표시용이다.
+- **기록 통합 정리**(Routes 탭 ⤓ 메뉴): `consolidateRoutes()` — 앱·GPX·Cyclemeter 기록을 기본으로 두고
+  겹치지 않는 Health 기록만 보충, 1.5km 이하·속도 0 기록은 일괄 삭제. 완료 직후
+  `scanForDuplicateCandidates()` 가 ① 다른 소스 기록과 시간 구간이 겹치는 Health 기록(이미 포함돼
+  중복), ② 같은 코스(`RouteGrouping`, GPS 시작/끝+거리 기준)·같은 날짜에 2건 이상인 GPX 등 중복 후보를
+  찾아 `DuplicateReviewSheet` 확인 화면을 띄운다. 기본 선택은 Health 겹침 전체 + 그룹별 GPS 포인트가
+  가장 많은 기록만 보존하고 나머지 체크 — 사용자가 체크를 조정한 뒤 "삭제" 버튼을 눌러야 실제 삭제된다
+  (`confirmDeleteDuplicates`, 자동 삭제 없음).
 - 앱 아이콘 이미지 미포함(placeholder, 폰·워치 공통).
 - `startWatchApp(toHandle:)` 는 워치 앱이 설치되어 있어야 동작. 워치에서 직접 **시작** 버튼으로도 측정 가능.

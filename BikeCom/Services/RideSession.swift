@@ -119,6 +119,8 @@ final class RideSession: ObservableObject {
         var scanned: Int
     }
     @Published var pendingImport: PendingImport?
+    /// 통합 정리 후 사용자 확인이 필요한 중복 삭제 후보(nil 이면 시트 숨김).
+    @Published var duplicateCandidates: DuplicateCandidates?
     /// 주행 종료 후 저장 진행(목록·건강·캘린더·파일).
     @Published var saveProgress: RideSaveProgress?
 
@@ -235,8 +237,60 @@ final class RideSession: ObservableObject {
                 self.health.refreshTotals()
                 self.importStatus = "정리 완료: \(result.count)개 기록 · 1.5km 이하 \(removed)개 삭제 (Health 후보 \(healthRides.count))"
                 self.refreshDataStats()
+                self.scanForDuplicateCandidates()
             }
         })
+    }
+
+    /// 통합 정리 후 사용자 확인을 거쳐 삭제할 후보.
+    struct DuplicateCandidates {
+        /// 다른 소스(GPX·앱 등) 기록과 시간이 겹치는 Health 기록 — 이미 포함돼 있어 삭제 권장(기본 전체 선택).
+        var overlappingHealth: [RideRecord] = []
+        /// 같은 코스(GPS 시작/끝 + 거리)·같은 날짜에 2건 이상인 중복 후보 그룹.
+        var sameDayCourseGroups: [[RideRecord]] = []
+        var isEmpty: Bool { overlappingHealth.isEmpty && sameDayCourseGroups.isEmpty }
+    }
+
+    /// ⚙️ → 기록 통합 정리 이후(또는 단독으로) 호출 — 삭제 후보를 찾아 `duplicateCandidates` 에 채운다.
+    /// 실제 삭제는 사용자가 확인 시트에서 선택해야 `confirmDeleteDuplicates` 로 실행된다.
+    func scanForDuplicateCandidates() {
+        let records = store.records.filter { !$0.isCourseOnly }
+        let healthRecs = records.filter { $0.source == .health }
+        let others = records.filter { $0.source != .health }
+
+        // 1. 다른 소스 기록과 시간 구간이 조금이라도 겹치는 Health 기록 — 이미 포함돼 있으므로 삭제 후보.
+        let overlappingHealth = healthRecs.filter { h in
+            others.contains { RideRecordMerge.timeRangesOverlap(h, $0) }
+        }
+
+        // 2. 같은 코스(GPS 시작/끝 + 거리 버킷)로 묶은 뒤, 그 안에서 같은 날짜에 2건 이상이면 중복 후보.
+        let cal = Calendar.current
+        var dupGroups: [[RideRecord]] = []
+        for group in RouteGrouping.groups(others, radiusMeters: 250) where group.id != "no-gps" {
+            var byDay: [Date: [RideRecord]] = [:]
+            for r in group.rides {
+                byDay[cal.startOfDay(for: r.startedAt), default: []].append(r)
+            }
+            for rides in byDay.values where rides.count > 1 {
+                dupGroups.append(rides.sorted { $0.startedAt < $1.startedAt })
+            }
+        }
+        dupGroups.sort { ($0.first?.startedAt ?? .distantPast) > ($1.first?.startedAt ?? .distantPast) }
+
+        let candidates = DuplicateCandidates(overlappingHealth: overlappingHealth, sameDayCourseGroups: dupGroups)
+        guard !candidates.isEmpty else { return }
+        duplicateCandidates = candidates
+    }
+
+    /// 사용자가 확인 시트에서 선택한 기록만 실제로 삭제한다.
+    func confirmDeleteDuplicates(_ records: [RideRecord]) {
+        for r in records { store.delete(r) }
+        refreshDataStats()
+        duplicateCandidates = nil
+    }
+
+    func dismissDuplicateReview() {
+        duplicateCandidates = nil
     }
 
     /// More 탭 데이터 출처 통계를 백그라운드에서 계산해 발행한다.

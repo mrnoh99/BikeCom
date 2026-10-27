@@ -185,6 +185,15 @@ struct RoutesView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: Binding(
+            get: { session.duplicateCandidates != nil },
+            set: { if !$0 { session.dismissDuplicateReview() } }
+        )) {
+            if let candidates = session.duplicateCandidates {
+                DuplicateReviewSheet(candidates: candidates, unit: session.unit)
+                    .environmentObject(session)
+            }
+        }
     }
 
     // 데이터 가져오기/정리 메뉴 (라이딩 기록 첫 페이지)
@@ -1144,7 +1153,7 @@ private struct ConsolidateConfirmSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple Health 기록을 보충합니다. 주행거리 1.5km 이하·속도 0 기록은 일괄 삭제합니다.")
+                Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple Health 기록을 보충합니다. 주행거리 1.5km 이하·속도 0 기록은 일괄 삭제합니다. 완료 후 기존 기록과 시간이 겹치는 Health 기록, 같은 날·같은 코스 중복 기록을 찾아 삭제 확인 화면을 띄웁니다.")
                     .font(.callout)
                     .foregroundColor(.secondary)
                 Button(role: .destructive) {
@@ -1167,6 +1176,102 @@ private struct ConsolidateConfirmSheet: View {
                 }
             }
         }
+    }
+}
+
+/// 통합 정리 후 중복 삭제 후보 확인 시트 — Health 시간 겹침 + 같은 날·같은 코스 중복.
+/// 사용자가 체크한(삭제 선택) 기록만 "삭제" 버튼으로 실제 삭제한다.
+private struct DuplicateReviewSheet: View {
+    @EnvironmentObject var session: RideSession
+    let candidates: RideSession.DuplicateCandidates
+    let unit: DistanceUnit
+    @State private var toDelete: Set<RideRecord.ID>
+
+    init(candidates: RideSession.DuplicateCandidates, unit: DistanceUnit) {
+        self.candidates = candidates
+        self.unit = unit
+        // 기본 선택: Health 겹침은 전부, 같은 날·같은 코스 그룹은 GPS 포인트가 가장 많은(가장
+        // 상세한) 기록만 보존하고 나머지를 삭제 대상으로 미리 체크.
+        var initial = Set(candidates.overlappingHealth.map(\.id))
+        for group in candidates.sameDayCourseGroups {
+            let keep = group.max { $0.trackCount < $1.trackCount }?.id ?? group.first?.id
+            for r in group where r.id != keep { initial.insert(r.id) }
+        }
+        _toDelete = State(initialValue: initial)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !candidates.overlappingHealth.isEmpty {
+                    Section {
+                        ForEach(candidates.overlappingHealth) { row($0) }
+                    } header: {
+                        Text("Health 중복 (\(candidates.overlappingHealth.count)건)")
+                    } footer: {
+                        Text("이미 다른 기록(GPX·앱 등)과 시간이 겹쳐 중복입니다. 기본적으로 모두 삭제가 선택돼 있습니다.")
+                    }
+                }
+                ForEach(Array(candidates.sameDayCourseGroups.enumerated()), id: \.offset) { _, group in
+                    Section {
+                        ForEach(group) { row($0) }
+                    } header: {
+                        Text(group.first.map { "같은 날·같은 코스 (\(routeDateFormatter.string(from: $0.startedAt).prefix(10)))" } ?? "같은 날·같은 코스")
+                    } footer: {
+                        Text("GPS 시작/끝 위치와 거리가 비슷한 기록이 같은 날 \(group.count)건 있습니다. 보존할 기록은 체크를 해제하세요 — 기본은 GPS 포인트가 가장 많은 기록만 남깁니다.")
+                    }
+                }
+            }
+            .navigationTitle("중복 기록 정리")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("닫기") { session.dismissDuplicateReview() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("삭제 (\(toDelete.count))") {
+                        let all = candidates.overlappingHealth + candidates.sameDayCourseGroups.flatMap { $0 }
+                        session.confirmDeleteDuplicates(all.filter { toDelete.contains($0.id) })
+                    }
+                    .foregroundColor(.red)
+                    .disabled(toDelete.isEmpty)
+                }
+            }
+        }
+    }
+
+    private func sourceLabel(_ r: RideRecord) -> String {
+        switch r.source {
+        case .app: return "앱"
+        case .health: return "Health"
+        case .cyclemeter: return "Cyclemeter"
+        case .gpx: return "GPX"
+        case nil: return "앱"
+        }
+    }
+
+    private func row(_ r: RideRecord) -> some View {
+        let selected = toDelete.contains(r.id)
+        return Button {
+            if selected { toDelete.remove(r.id) } else { toDelete.insert(r.id) }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(r.isCourseOnly ? (r.mapName ?? r.name) : r.name)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.primary)
+                    Text("\(routeDateFormatter.string(from: r.startedAt)) · "
+                         + String(format: "%.2f %@", unit.distance(fromMeters: r.distanceMeters), unit.distanceLabel)
+                         + " · \(formatDuration(r.duration)) · \(sourceLabel(r))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(selected ? Theme.red : .secondary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
