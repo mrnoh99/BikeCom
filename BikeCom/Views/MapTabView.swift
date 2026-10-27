@@ -299,9 +299,10 @@ struct GoogleLiveMap: UIViewRepresentable {
         // GMSMapView() 기본 카메라는 (0,0) 근처 최대 축소 상태라, GPS 가 아직 안 잡혔을 때
         // 사실상 빈 화면처럼 보인다(Apple 지도 쪽 RouteMap 은 Seoul 기본 region 이 있어 이 문제가
         // 없다). userLocation 이 있으면 그 위치로, 없으면 Apple 지도와 같은 기본값(서울)으로 시작.
-        let start = userLocation ?? CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
+        let validStart = userLocation.flatMap { CLLocationCoordinate2DIsValid($0) ? $0 : nil }
+        let start = validStart ?? CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
         let map = GMSMapView(frame: .zero)
-        map.camera = GMSCameraPosition(target: start, zoom: userLocation != nil ? 16 : 11)
+        map.camera = GMSCameraPosition(target: start, zoom: validStart != nil ? 16 : 11)
         map.mapType = .normal
         map.isMyLocationEnabled = true
         map.settings.myLocationButton = true
@@ -317,23 +318,27 @@ struct GoogleLiveMap: UIViewRepresentable {
             context.coordinator.userMoved = false
         }
         map.clear()
-        if courseTrack.count > 1 {
+        // GMS는 NaN/범위 밖 좌표가 섞이면 크래시한다 — GPS 글리치·손상된 코스 파일 등으로
+        // 유효하지 않은 좌표가 들어올 수 있어 반드시 걸러낸다.
+        let validCourseTrack = courseTrack.filter(CLLocationCoordinate2DIsValid)
+        if validCourseTrack.count > 1 {
             let path = GMSMutablePath()
-            for c in courseTrack { path.add(c) }
+            for c in validCourseTrack { path.add(c) }
             let line = GMSPolyline(path: path)
             line.strokeColor = UIColor.systemOrange.withAlphaComponent(0.7)
             line.strokeWidth = 6
             line.map = map
         }
-        if track.count > 1 {
+        let validTrack = track.filter(CLLocationCoordinate2DIsValid)
+        if validTrack.count > 1 {
             let path = GMSMutablePath()
-            for c in track { path.add(c) }
+            for c in validTrack { path.add(c) }
             let line = GMSPolyline(path: path)
             line.strokeColor = .systemBlue
             line.strokeWidth = 5
             line.map = map
         }
-        if let loc = userLocation, !context.coordinator.userMoved {
+        if let loc = userLocation, CLLocationCoordinate2DIsValid(loc), !context.coordinator.userMoved {
             if navigationMode {
                 // 내비게이션 모드: 근접 줌 + 3D 기울기로 추적. 위쪽 padding 을 키워
                 // 사용자 위치를 화면 하단 1/5(좌우 중앙)에 둔다.
@@ -378,8 +383,9 @@ struct NaverLiveMap: UIViewRepresentable {
         let map = NMFMapView(frame: .zero)
         // GoogleLiveMap 과 동일한 이유: GPS 가 아직 안 잡혔을 때 기본 카메라 위치가 사용자
         // 기대와 다른 곳(또는 과한 축소)일 수 있어, Apple 지도와 같은 기본값(서울)으로 시작.
-        let start = NMGLatLng(lat: userLocation?.latitude ?? 37.5665, lng: userLocation?.longitude ?? 126.9780)
-        map.zoomLevel = userLocation != nil ? 16 : 11
+        let validStart = userLocation.flatMap { CLLocationCoordinate2DIsValid($0) ? $0 : nil }
+        let start = NMGLatLng(lat: validStart?.latitude ?? 37.5665, lng: validStart?.longitude ?? 126.9780)
+        map.zoomLevel = validStart != nil ? 16 : 11
         map.moveCamera(NMFCameraUpdate(scrollTo: start))
         map.mapType = .basic
         map.positionMode = .disabled   // 위치는 LocationManager 좌표로 직접 표시(중복 방지)
@@ -398,8 +404,9 @@ struct NaverLiveMap: UIViewRepresentable {
         context.coordinator.courseOverlay = nil
         context.coordinator.trackOverlay = nil
 
-        if courseTrack.count > 1 {
-            let points = courseTrack.map { NMGLatLng(lat: $0.latitude, lng: $0.longitude) }
+        let validCourseTrack = courseTrack.filter(CLLocationCoordinate2DIsValid)
+        if validCourseTrack.count > 1 {
+            let points = validCourseTrack.map { NMGLatLng(lat: $0.latitude, lng: $0.longitude) }
             if let line = NMFPath(points: points) {
                 line.color = UIColor.systemOrange.withAlphaComponent(0.7)
                 line.width = 6
@@ -407,8 +414,9 @@ struct NaverLiveMap: UIViewRepresentable {
                 context.coordinator.courseOverlay = line
             }
         }
-        if track.count > 1 {
-            let points = track.map { NMGLatLng(lat: $0.latitude, lng: $0.longitude) }
+        let validTrack = track.filter(CLLocationCoordinate2DIsValid)
+        if validTrack.count > 1 {
+            let points = validTrack.map { NMGLatLng(lat: $0.latitude, lng: $0.longitude) }
             if let line = NMFPath(points: points) {
                 line.color = .systemBlue
                 line.width = 5
@@ -416,7 +424,7 @@ struct NaverLiveMap: UIViewRepresentable {
                 context.coordinator.trackOverlay = line
             }
         }
-        if let loc = userLocation {
+        if let loc = userLocation, CLLocationCoordinate2DIsValid(loc) {
             let target = NMGLatLng(lat: loc.latitude, lng: loc.longitude)
             map.locationOverlay.location = target
             if !context.coordinator.userMoved {
