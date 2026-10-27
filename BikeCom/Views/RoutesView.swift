@@ -269,7 +269,9 @@ struct RoutesView: View {
     // 현재 전체 기록을 BikeCom-Backup.json + zip 으로 만들어 공유 시트로 내보낸다.
     private func backupNow() {
         session.importStatus = "백업 zip 만드는 중…(트랙 포함)"
-        session.store.makeBackupZip { url in
+        session.store.makeBackupZip { done, total in
+            session.importStatus = "백업 zip 만드는 중… 트랙 \(done)/\(total)"
+        } completion: { url in
             guard let url else {
                 session.importStatus = "백업 생성 실패"; return
             }

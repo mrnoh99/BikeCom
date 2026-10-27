@@ -564,19 +564,31 @@ final class RideStore: ObservableObject {
     /// 몇 개만 섞여도 그 대기 시간이 고스란히 더해져("너무 느리다"는 체감의 실제 원인) 전체
     /// 백업 생성이 N × 수 초로 늘어질 수 있었다. 동시에 여러 파일을 읽으면 가장 느린 소수의
     /// 파일만 병렬로 기다리면 되므로 전체 소요 시간이 크게 줄어든다.
-    private func buildFullBackupData(from summaries: [RideRecord]) -> Data? {
+    /// progress: (완료된 트랙 수, 전체 트랙 수)를 보고한다(임의의 백그라운드 스레드에서 호출됨 —
+    /// 호출부에서 메인 큐로 넘겨야 한다). 매번 호출하면 너무 잦으므로(기록 많으면 수천 번) 25건
+    /// 단위로만 보고한다.
+    private func buildFullBackupData(from summaries: [RideRecord],
+                                      progress: ((Int, Int) -> Void)? = nil) -> Data? {
         var full = summaries
         let indices = full.indices.filter { full[$0].track.isEmpty && full[$0].trackCount > 0 }
         if !indices.isEmpty {
             var tracks = [[RideRecord.Coordinate]](repeating: [], count: indices.count)
             let group = DispatchGroup()
             let limiter = DispatchSemaphore(value: 16)
+            let total = indices.count
+            var done = 0
+            let doneLock = NSLock()
             tracks.withUnsafeMutableBufferPointer { buf in
                 for (i, idx) in indices.enumerated() {
                     limiter.wait()
                     group.enter()
                     Self.readTrack(self.trackFileURL(full[idx].id)) { coords in
                         buf[i] = coords
+                        doneLock.lock()
+                        done += 1
+                        let current = done
+                        doneLock.unlock()
+                        if current == total || current % 25 == 0 { progress?(current, total) }
                         limiter.signal()
                         group.leave()
                     }
@@ -590,17 +602,20 @@ final class RideStore: ObservableObject {
 
     /// 현재 전체 기록(트랙 포함)을 백업 형식(JSON)으로 인코딩한다(수동 내보내기·공유용).
     /// 트랙 파일을 디스크에서 읽으므로 백그라운드(ioQueue)에서 수행하고 결과만 메인으로 반환.
-    func makeBackupData(completion: @escaping (Data?) -> Void) {
+    /// progress 는 메인 큐에서 호출된다.
+    func makeBackupData(progress: ((Int, Int) -> Void)? = nil, completion: @escaping (Data?) -> Void) {
         let snapshot = records
         ioQueue.async { [weak self] in
-            let data = self?.buildFullBackupData(from: snapshot)
+            let data = self?.buildFullBackupData(from: snapshot) { done, total in
+                DispatchQueue.main.async { progress?(done, total) }
+            }
             DispatchQueue.main.async { completion(data) }
         }
     }
 
-    /// 현재 전체 기록(트랙 포함)을 zip 백업 파일로 만든다(공유·복원용).
-    func makeBackupZip(completion: @escaping (URL?) -> Void) {
-        makeBackupData { [weak self] data in
+    /// 현재 전체 기록(트랙 포함)을 zip 백업 파일로 만든다(공유·복원용). progress 는 메인 큐에서 호출된다.
+    func makeBackupZip(progress: ((Int, Int) -> Void)? = nil, completion: @escaping (URL?) -> Void) {
+        makeBackupData(progress: progress) { [weak self] data in
             guard let self, let data else {
                 DispatchQueue.main.async { completion(nil) }
                 return
