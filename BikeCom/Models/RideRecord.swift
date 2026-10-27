@@ -558,13 +558,32 @@ final class RideStore: ObservableObject {
 
     /// 요약본(메모리)에 디스크의 트랙을 다시 채워 **트랙 포함 전체본**을 만든다.
     /// 백업이 Health GPS·지도 코스(GPX) 트랙까지 보존하도록 한다. 백그라운드에서 호출.
+    ///
+    /// 트랙 읽기를 **최대 16개씩 동시에** 진행한다 — 예전엔 기록마다 순차로(1건씩) 읽어서,
+    /// 기록이 많을 때(시드 데이터 기준 ~1,900건) 로컬에 없는(iCloud 재다운로드가 필요한) 파일이
+    /// 몇 개만 섞여도 그 대기 시간이 고스란히 더해져("너무 느리다"는 체감의 실제 원인) 전체
+    /// 백업 생성이 N × 수 초로 늘어질 수 있었다. 동시에 여러 파일을 읽으면 가장 느린 소수의
+    /// 파일만 병렬로 기다리면 되므로 전체 소요 시간이 크게 줄어든다.
     private func buildFullBackupData(from summaries: [RideRecord]) -> Data? {
-        let full = summaries.map { rec -> RideRecord in
-            var r = rec
-            if r.track.isEmpty, r.trackCount > 0 {
-                r.track = Self.readTrackSync(self.trackFileURL(r.id))
+        var full = summaries
+        let indices = full.indices.filter { full[$0].track.isEmpty && full[$0].trackCount > 0 }
+        if !indices.isEmpty {
+            var tracks = [[RideRecord.Coordinate]](repeating: [], count: indices.count)
+            let group = DispatchGroup()
+            let limiter = DispatchSemaphore(value: 16)
+            tracks.withUnsafeMutableBufferPointer { buf in
+                for (i, idx) in indices.enumerated() {
+                    limiter.wait()
+                    group.enter()
+                    Self.readTrack(self.trackFileURL(full[idx].id)) { coords in
+                        buf[i] = coords
+                        limiter.signal()
+                        group.leave()
+                    }
+                }
+                group.wait()
             }
-            return r
+            for (i, idx) in indices.enumerated() { full[idx].track = tracks[i] }
         }
         return try? JSONEncoder().encode(Backup(count: full.count, records: full))
     }
