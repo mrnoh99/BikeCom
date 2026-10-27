@@ -315,13 +315,26 @@ final class RideStore: ObservableObject {
     }
 
     /// 라이딩의 GPS 트랙을 디스크에서 비동기로 로드(상세·내보내기용). 메인 큐로 반환.
+    /// iCloud 전용 파일이면 다운로드가 끝날 때까지 최대 6초(1초 간격 재시도) 기다린다 — 이
+    /// 재시도는 ioQueue 를 붙잡지 않고 메인 큐 타이머로 스케줄되므로, 같은 큐를 쓰는 다른 작업
+    /// (자동 백업의 전체 트랙 재인코딩 등)을 몇 초씩 막는 일이 없다.
     func loadTrack(for record: RideRecord, completion: @escaping ([RideRecord.Coordinate]) -> Void) {
         if !record.track.isEmpty { completion(record.track); return }
         guard record.trackCount > 0 else { completion([]); return }
-        let url = trackFileURL(record.id)
-        ioQueue.async {
+        attemptLoadTrack(trackFileURL(record.id), retriesLeft: 6, completion: completion)
+    }
+
+    private func attemptLoadTrack(_ url: URL, retriesLeft: Int,
+                                  completion: @escaping ([RideRecord.Coordinate]) -> Void) {
+        ioQueue.async { [weak self] in
             let coords = Self.readTrack(url)
-            DispatchQueue.main.async { completion(coords) }
+            guard coords.isEmpty, retriesLeft > 0 else {
+                DispatchQueue.main.async { completion(coords) }
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                self?.attemptLoadTrack(url, retriesLeft: retriesLeft - 1, completion: completion)
+            }
         }
     }
 
@@ -332,17 +345,16 @@ final class RideStore: ObservableObject {
         return Self.readTrack(trackFileURL(record.id))
     }
 
+    /// 빠르고 논블로킹: iCloud 전용 파일(로컬에 아직 안 받아짐)이면 다운로드만 요청하고 바로
+    /// 시도한다 — 여기서 기다리지 않는다. (한때 여기서 최대 8초를 블로킹 대기했었는데, 이
+    /// 함수가 `ioQueue`라는 **공유 직렬 큐**에서 호출되는 걸 간과했다. buildFullBackupData가
+    /// 트랙이 비어 있는 모든 기록에 대해 이 함수를 반복 호출하므로, 로컬에 없는 파일이 여러 개면
+    /// N × 8초가 그대로 ioQueue를 막아버려 다른 작업 — 상세 화면의 개별 트랙 로드 포함 — 이
+    /// 전부 그 뒤에 멈춰 선다. "다운로드 완료까지 기다리기"는 호출부(`attemptLoadTrack`)가
+    /// ioQueue를 붙잡지 않는 방식으로 재시도하도록 옮겼다.
     private static func readTrack(_ url: URL) -> [RideRecord.Coordinate] {
-        // iCloud 전용 파일(로컬에 아직 안 받아짐)이면 다운로드를 요청한 뒤, 파일이 실제로 나타날
-        // 때까지 최대 몇 초 기다린다 — 요청만 하고 바로 읽으면 다운로드가 끝나기 전이라 빈 배열로
-        // 끝나버려서(상세 화면이 "경로 불러오는 중"에서 영영 멈추는 원인) 트랙이 있는데도 못 읽는다.
-        // readTrack 은 항상 백그라운드 큐에서 호출되므로 짧게 블로킹 대기해도 UI 는 안 멈춘다.
         if !FileManager.default.fileExists(atPath: url.path) {
             try? FileManager.default.startDownloadingUbiquitousItem(at: url)
-            let deadline = Date().addingTimeInterval(8)
-            while !FileManager.default.fileExists(atPath: url.path), Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.3)
-            }
         }
         var result: [RideRecord.Coordinate] = []
         let coordinator = NSFileCoordinator(); var err: NSError?
