@@ -313,7 +313,11 @@ struct GoogleRouteMap: UIViewRepresentable {
     func updateUIView(_ map: GMSMapView, context: Context) {
         map.clear()
         var bounds = GMSCoordinateBounds()
-        for (i, track) in tracks.enumerated() where track.count > 1 {
+        // GMS는 NaN/범위 밖 좌표가 섞이면 크래시한다 — GPS 글리치·손상된 트랙 파일 등으로
+        // 유효하지 않은 좌표가 들어올 수 있어 반드시 걸러낸다.
+        for (i, rawTrack) in tracks.enumerated() {
+            let track = rawTrack.filter(CLLocationCoordinate2DIsValid)
+            guard track.count > 1 else { continue }
             let path = GMSMutablePath()
             for c in track { path.add(c); bounds = bounds.includingCoordinate(c) }
             let line = GMSPolyline(path: path)
@@ -346,7 +350,9 @@ struct NaverRouteMap: UIViewRepresentable {
         context.coordinator.overlays.removeAll()
 
         var minLat: Double?, maxLat: Double?, minLng: Double?, maxLng: Double?
-        for (i, track) in tracks.enumerated() where track.count > 1 {
+        for (i, rawTrack) in tracks.enumerated() {
+            let track = rawTrack.filter(CLLocationCoordinate2DIsValid)
+            guard track.count > 1 else { continue }
             let points = track.map { NMGLatLng(lat: $0.latitude, lng: $0.longitude) }
             if let line = NMFPath(points: points) {
                 line.color = palette[i % palette.count]
