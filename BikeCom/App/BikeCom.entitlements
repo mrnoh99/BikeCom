@@ -18,6 +18,8 @@
 	<key>com.apple.developer.icloud-services</key>
 	<array>
 		<string>CloudDocuments</string>
+		<!-- CloudKit (Core Data + NSPersistentCloudKitContainer 레코드 동기화) -->
+		<string>CloudKit</string>
 	</array>
 </dict>
 </plist>

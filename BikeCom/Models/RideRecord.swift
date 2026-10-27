@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreData
 import CoreLocation
 
 /// 라이딩 기록의 출처(통합 정리 시 우선순위: app > health > cyclemeter).
@@ -134,34 +135,28 @@ struct RideRecord: Identifiable, Codable {
     }
 }
 
-/// 콜백을 **정확히 한 번만** 실행한다. `readTrack`처럼 "성공" 경로와 "타임아웃" 경로가
-/// 경쟁할 때, 둘 중 먼저 끝난 쪽만 completion을 부르고 나중에 끝난 쪽은 조용히 버린다.
-private final class SingleShotCompletion<T> {
-    private let lock = NSLock()
-    private var fired = false
-    private let action: (T) -> Void
-    init(_ action: @escaping (T) -> Void) { self.action = action }
-    func fire(_ value: T) {
-        lock.lock()
-        let shouldFire = !fired
-        fired = true
-        lock.unlock()
-        if shouldFire { action(value) }
-    }
-}
-
 /// 라이딩 기록 저장소 + 누적 거리 통계.
-/// `rides.json` 을 **iCloud Documents 컨테이너**에 저장해 기기 간 동기화한다.
-/// iCloud 를 못 쓰면 로컬 Documents 로 폴백한다.
+///
+/// **Core Data + `NSPersistentCloudKitContainer`로 저장한다** (기존엔 `rides.json` 파일 하나를
+/// iCloud Documents로 동기화하는 방식이었다). 여러 기기를 동시에 쓸 때 파일 하나를 통째로
+/// 덮어쓰는 방식은 한 기기의 새 기록이 다른 기기의 저장으로 조용히 사라지는 위험이 있었다
+/// (각 기기가 메모리의 전체 배열을 그대로 다시 썼기 때문). Core Data + CloudKit은 레코드
+/// 단위로 동기화하고 충돌도 Apple 프레임워크가 처리해서 이 위험을 구조적으로 없앤다.
+/// 트랙(GPS 좌표 배열)은 `trackData`에 JSON으로 인코딩해 저장하고, "Allows External Storage"로
+/// 표시해 큰 트랙도 CloudKit의 레코드당 용량 제한에 걸리지 않게 한다.
+///
+/// 트랙 읽기가 로컬 SQLite 저장소에서 바로 이뤄지므로, 예전에 `NSFileCoordinator`가 iCloud
+/// 파일을 기다리다 영영 반환하지 않을 수 있었던 문제("경로 불러오는 중"이 끝없이 도는 것으로
+/// 확인된 원인 중 하나) 자체가 이제 구조적으로 발생하지 않는다 — 로컬 읽기는 항상 빠르고,
+/// CloudKit과의 동기화는 완전히 분리된 백그라운드 과정이다.
 final class RideStore: ObservableObject {
     @Published private(set) var records: [RideRecord] = [] {
         didSet { recomputeAggregates() }
     }
 
-    /// 가장 최근 자동 백업 시도가 실제로 실패했는지. 예전엔 iCloud 쓰기가 조용히 실패해도
-    /// "마지막 백업 시각"(UserDefaults)만 그대로 갱신돼, 재설치 시 복원해보기 전까진 사용자가
-    /// 전혀 눈치챌 수 없었다("6월 스냅샷에 멈춰 있던" 문제의 유력한 원인). 이제 로컬·iCloud
-    /// 쓰기가 실제로 성공했을 때만 그 시각을 갱신하고, 실패하면 이 플래그로 화면에 알린다.
+    /// 가장 최근 수동 백업(zip 내보내기) 시도가 실패했는지. Core Data 전환 이전엔 "자동 백업"이
+    /// 조용히 실패할 수 있었지만, 지금은 CloudKit이 실시간 동기화를 맡고 있어 이 플래그는
+    /// 사용자가 직접 누른 "백업 zip 내보내기"에만 해당한다.
     @Published private(set) var lastBackupFailed = false
 
     // MARK: 누적 거리 캐시 (오도미터 방식)
@@ -183,233 +178,245 @@ final class RideStore: ObservableObject {
         return monthlyMeters.reduce(0) { $0 + ($1.key / 100 == y ? $1.value : 0) }
     }
 
-    private let fileName = "rides.json"
-    private let localURL: URL
-    private var cloudURL: URL?            // iCloud 사용 가능 시 설정
-    private var metadataQuery: NSMetadataQuery?
+    /// 백업 봉투(수동 zip 내보내기·복원 포맷). `BackupZip.swift`가 `RideStore.Backup`으로
+    /// 직접 참조하므로 이름·형태를 그대로 유지한다.
+    struct Backup: Codable {
+        var version: Int = 1
+        var savedAt: Date = Date()
+        var count: Int
+        var records: [RideRecord]
+    }
 
-    /// 저장/로드(인코딩·디코딩·파일 IO)를 메인 스레드 밖에서 직렬 처리한다.
-    private let ioQueue = DispatchQueue(label: "com.bikecom.rides.io", qos: .utility)
-    /// 마지막으로 디스크에 쓰거나 읽은 rides.json 의 **해시**. ioQueue 에서만 접근.
-    /// 전체 바이트를 보관하면 메모리(수십 MB)를 영구 점유하므로 해시만 들고 비교한다.
-    /// 우리가 쓴 파일이 iCloud 알림으로 되돌아왔을 때 불필요한 재로딩을 막는다.
-    private var lastPersistedHash: Int?
-    /// 연속 변경(대량 삭제 등) 시 전체 인코딩을 매번 하지 않도록 저장을 디바운스한다.
-    private var saveWorkItem: DispatchWorkItem?
+    static let lastBackupKey = "bike.lastBackupAt"
+
+    private let container: NSPersistentCloudKitContainer
+    private var viewContext: NSManagedObjectContext { container.viewContext }
 
     init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        localURL = docs.appendingPathComponent(fileName)
         loadPersistedAggregates()   // 레코드 로드 전에도 누적 거리 즉시 표시
-        load()   // 우선 로컬에서 즉시 로드
-        // iCloud 는 계정·컨테이너 준비 후 시도(미설정 시 accounts Code=7 로그만 나고 로컬 폴백)
-        DispatchQueue.main.async { [weak self] in
-            guard let self, CloudDocuments.isAvailable else { return }
-            self.resolveCloud()
+        container = BikeComPersistence.makeContainer()
+        NotificationCenter.default.addObserver(self, selector: #selector(storeRemoteChange),
+                                               name: .NSPersistentStoreRemoteChange,
+                                               object: container.persistentStoreCoordinator)
+        // loadPersistentStores 는 비동기다 — 완료 전에 fetch를 먼저 돌리면(레이스) 스토어가
+        // 아직 안 붙어 있어 빈 결과를 받을 수 있다. 완료 핸들러 안에서만 읽기 시작한다.
+        // 핸들러는 메인 스레드 호출이 보장되지 않으므로 명시적으로 메인에 올린다.
+        container.loadPersistentStores { [weak self] _, error in
+            if let error {
+                // 스토어 로드 실패는 드물지만(기기 저장 공간 고갈 등) 크래시 대신 로그만
+                // 남긴다 — 빈 스토어로라도 앱은 계속 쓸 수 있어야 한다.
+                print("Core Data 스토어 로드 실패: \(error)")
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.refreshRecords()
+                // 구버전(파일 기반 rides.json + Tracks/) 데이터를 1회 이전 — 기기마다 한 번만
+                // 실행되며, 이미 Core Data에 있는 기록은 같은 id로 덮어써질 뿐 중복되지 않는다.
+                LegacyRideImporter.importIfNeeded(into: self)
+            }
         }
     }
 
-    private var fileURL: URL { cloudURL ?? localURL }
-
-    func add(_ record: RideRecord) {
-        writeTrackFile(record)
-        records.insert(record.summary(), at: 0)
-        save()
+    /// 다른 기기의 변경이 CloudKit을 통해 들어오면(NSPersistentCloudKitContainer가 알아서 병합)
+    /// 알려준다 — 화면에 반영하기 위해 다시 읽기만 하면 된다(병합 자체는 이미 끝난 뒤).
+    @objc private func storeRemoteChange() {
+        DispatchQueue.main.async { [weak self] in self?.refreshRecords() }
     }
 
-    /// 대량 가져오기용: 한 번에 추가하고 1회만 저장(최신순 정렬).
+    private func refreshRecords() {
+        let req = CDRide.fetchRequest()
+        req.sortDescriptors = [NSSortDescriptor(key: "startedAt", ascending: false)]
+        guard let rows = try? viewContext.fetch(req) else { return }
+        records = rows.map { Self.summary(of: $0) }
+    }
+
+    // MARK: 변경 (기존 공개 API 그대로 — 호출부는 전혀 바뀌지 않는다)
+
+    func add(_ record: RideRecord) {
+        Self.upsert(record, in: viewContext)
+        saveContext()
+        refreshRecords()
+    }
+
+    /// 대량 가져오기용: 한 번에 추가하고 1회만 저장(최신순 정렬은 refreshRecords 가 다시 계산).
     func addMany(_ newRecords: [RideRecord]) {
         guard !newRecords.isEmpty else { return }
-        for r in newRecords { writeTrackFile(r) }
-        records.append(contentsOf: newRecords.map { $0.summary() })
-        records.sort { $0.startedAt > $1.startedAt }
-        save()
+        for r in newRecords { Self.upsert(r, in: viewContext) }
+        saveContext()
+        refreshRecords()
     }
 
     /// 병합 결과 등으로 전체 기록을 교체한다.
     func replaceAll(_ newRecords: [RideRecord]) {
-        for r in newRecords { writeTrackFile(r) }
-        pruneTrackFiles(keeping: Set(newRecords.map { $0.id }))
-        records = newRecords.map { $0.summary() }
-        save()
+        if let all = try? viewContext.fetch(CDRide.fetchRequest()) {
+            for o in all { viewContext.delete(o) }
+        }
+        for r in newRecords { Self.upsert(r, in: viewContext) }
+        saveContext()
+        refreshRecords()
     }
 
     /// id 가 같은 기록을 교체(코스명·자전거 종류 등 편집 반영).
     func update(_ record: RideRecord) {
-        guard let i = records.firstIndex(where: { $0.id == record.id }) else { return }
-        writeTrackFile(record)   // 트랙이 있으면 갱신, 없으면 기존 파일 유지
-        records[i] = record.summary()
-        save()
+        guard records.contains(where: { $0.id == record.id }) else { return }
+        Self.upsert(record, in: viewContext)
+        saveContext()
+        refreshRecords()
     }
 
     func delete(_ record: RideRecord) {
-        records.removeAll { $0.id == record.id }
-        deleteTrackFile(record.id)
-        save()
+        Self.deleteByID(record.id, in: viewContext)
+        saveContext()
+        refreshRecords()
     }
 
-    /// 여러 기록을 한 번에 삭제한다. `delete(_:)`를 반복 호출하면 그 수만큼 `records`를
-    /// 따로따로 변이(mutate)하고 매번 `@Published` 변경을 발행하는데, 같은 틱(call stack) 안에서
-    /// 반복되면 SwiftUI가 그 변경을 구독한 화면(Routes 목록 등)을 재진입적으로 다시 그리려 하면서
-    /// 아직 변이 중인 배열을 동시에 읽어 크래시할 수 있다. 단일 변이+단일 발행으로 묶어 피한다.
+    /// 여러 기록을 한 번에 삭제한다. 하나씩 `delete(_:)`를 반복 호출하면 그때마다 `@Published`
+    /// 변경을 발행해 화면이 중간 상태를 여러 번 다시 그리므로, 모아서 한 번에 저장·발행한다.
     func deleteMany(_ toDelete: [RideRecord]) {
         guard !toDelete.isEmpty else { return }
-        let ids = Set(toDelete.map(\.id))
-        records.removeAll { ids.contains($0.id) }
-        for id in ids { deleteTrackFile(id) }
-        save()
+        for r in toDelete { Self.deleteByID(r.id, in: viewContext) }
+        saveContext()
+        refreshRecords()
     }
 
-    // MARK: 트랙 파일 (라이딩별 GPS 트랙을 분리 저장 — 메모리 절약)
-
-    /// 트랙 폴더는 iCloud 컨테이너(가능 시)에 두어 파일 단위로 **증분 동기화**된다.
-    /// 각 트랙 파일은 한 번만 쓰이므로 iCloud 가 변경분만 올린다(모놀리식 재업로드 없음).
-    private var tracksDir: URL {
-        (cloudURL ?? localURL).deletingLastPathComponent().appendingPathComponent("Tracks", isDirectory: true)
-    }
-    private var localTracksDir: URL {
-        localURL.deletingLastPathComponent().appendingPathComponent("Tracks", isDirectory: true)
-    }
-    private func trackFileURL(_ id: UUID) -> URL {
-        tracksDir.appendingPathComponent("\(id.uuidString).json")
-    }
-
-    /// 트랙이 비어 있지 않으면 라이딩별 파일로 저장(백그라운드, iCloud 안전 코디네이트 쓰기).
-    /// 비어 있으면 기존 파일을 보존.
-    private func writeTrackFile(_ record: RideRecord) {
-        guard !record.track.isEmpty else { return }
-        let url = trackFileURL(record.id)
-        let track = record.track
-        ioQueue.async { [weak self] in
-            self?.writeTrackData(track, to: url)
+    private func saveContext() {
+        guard viewContext.hasChanges else { return }
+        do {
+            try viewContext.save()
+        } catch {
+            // Core Data 저장 실패는 드물지만(디스크 공간 등), 크래시 대신 로그만 남긴다 —
+            // 다음 변경 때 다시 저장을 시도하면 되고, CloudKit 동기화는 그와 무관하게 계속된다.
+            print("RideStore Core Data 저장 실패: \(error)")
         }
     }
 
-    /// ioQueue 에서 동기 저장(백업 복원 진행률용).
-    private func writeTrackFileSync(_ record: RideRecord) {
-        guard !record.track.isEmpty else { return }
-        writeTrackData(record.track, to: trackFileURL(record.id))
-    }
+    // MARK: CDRide ↔ RideRecord 매핑
 
-    private func writeTrackData(_ track: [RideRecord.Coordinate], to url: URL) {
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                 withIntermediateDirectories: true)
-        guard let data = try? JSONEncoder().encode(track) else { return }
-        let coordinator = NSFileCoordinator(); var err: NSError?
-        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
-            try? data.write(to: u, options: .atomic)
+    /// 요약본(트랙 비움)으로 변환 — 목록·통계용. `cd.trackData`를 건드리지 않으므로(Core Data의
+    /// Binary External Storage는 접근하기 전까진 로드되지 않는다) 목록을 그릴 때 큰 트랙
+    /// 데이터를 메모리에 올리지 않는다.
+    private static func summary(of cd: CDRide) -> RideRecord {
+        var r = RideRecord(
+            id: cd.id ?? UUID(),
+            name: cd.name ?? "라이딩",
+            bikeName: cd.bikeName,
+            source: cd.source.flatMap(RideSource.init(rawValue:)),
+            location: cd.location,
+            startedAt: cd.startedAt ?? Date(),
+            duration: cd.duration,
+            totalElapsed: cd.totalElapsed,
+            distanceMeters: cd.distanceMeters,
+            averageSpeedMps: cd.averageSpeedMps,
+            maxSpeedMps: cd.maxSpeedMps,
+            maxHeartRate: cd.maxHeartRate?.intValue,
+            avgHeartRate: cd.avgHeartRate?.intValue,
+            maxCadence: cd.maxCadence?.intValue,
+            avgCadence: cd.avgCadence?.intValue,
+            track: [],
+            includeInMap: cd.includeInMap,
+            mapName: cd.mapName,
+            isCourseOnly: cd.isCourseOnly
+        )
+        r.trackCount = Int(cd.trackCount)
+        if let data = cd.startCoordData {
+            r.startCoord = try? JSONDecoder().decode(RideRecord.Coordinate.self, from: data)
         }
-    }
-
-    private func deleteTrackFile(_ id: UUID) {
-        let url = trackFileURL(id)
-        ioQueue.async {
-            let coordinator = NSFileCoordinator(); var err: NSError?
-            coordinator.coordinate(writingItemAt: url, options: .forDeleting, error: &err) { u in
-                try? FileManager.default.removeItem(at: u)
-            }
+        if let data = cd.endCoordData {
+            r.endCoord = try? JSONDecoder().decode(RideRecord.Coordinate.self, from: data)
         }
+        return r
     }
 
-    /// replaceAll 등으로 사라진 기록의 트랙 파일을 정리한다(고아 파일·iCloud 용량 누수 방지).
-    private func pruneTrackFiles(keeping ids: Set<UUID>) {
-        let dir = tracksDir
-        ioQueue.async { [weak self] in
-            self?.pruneTrackFilesSync(in: dir, keeping: ids)
+    /// 트랙까지 포함한 완전한 변환 — 백업 내보내기·상세 화면용.
+    private static func full(of cd: CDRide) -> RideRecord {
+        var r = summary(of: cd)
+        if let data = cd.trackData,
+           let coords = try? JSONDecoder().decode([RideRecord.Coordinate].self, from: data) {
+            r.track = coords
         }
+        return r
     }
 
-    private func pruneTrackFilesSync(keeping ids: Set<UUID>) {
-        pruneTrackFilesSync(in: tracksDir, keeping: ids)
-    }
-
-    private func pruneTrackFilesSync(in dir: URL, keeping ids: Set<UUID>) {
-        let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
-        for f in files where f.pathExtension == "json" {
-            guard let id = UUID(uuidString: f.deletingPathExtension().lastPathComponent),
-                  !ids.contains(id) else { continue }
-            let c = NSFileCoordinator(); var e: NSError?
-            c.coordinate(writingItemAt: f, options: .forDeleting, error: &e) { u in
-                try? fm.removeItem(at: u)
-            }
+    /// `id`가 같은 행을 찾아 갱신하거나 없으면 새로 만든다. 트랙은 **비어 있지 않을 때만**
+    /// 갱신하고(= 상세 화면에서 트랙을 올린 전체본으로 저장할 때), 요약본으로 `update(_:)`를
+    /// 호출해도 이미 저장된 트랙은 보존한다.
+    @discardableResult
+    private static func upsert(_ r: RideRecord, in ctx: NSManagedObjectContext) -> CDRide {
+        let req = CDRide.fetchRequest()
+        req.predicate = NSPredicate(format: "id == %@", r.id as CVarArg)
+        req.fetchLimit = 1
+        let cd = (try? ctx.fetch(req).first) ?? CDRide(context: ctx)
+        cd.id = r.id
+        cd.name = r.name
+        cd.bikeName = r.bikeName
+        cd.source = r.source?.rawValue
+        cd.location = r.location
+        cd.startedAt = r.startedAt
+        cd.duration = r.duration
+        cd.totalElapsed = r.totalElapsed
+        cd.distanceMeters = r.distanceMeters
+        cd.averageSpeedMps = r.averageSpeedMps
+        cd.maxSpeedMps = r.maxSpeedMps
+        cd.maxHeartRate = r.maxHeartRate.map { NSNumber(value: $0) }
+        cd.avgHeartRate = r.avgHeartRate.map { NSNumber(value: $0) }
+        cd.maxCadence = r.maxCadence.map { NSNumber(value: $0) }
+        cd.avgCadence = r.avgCadence.map { NSNumber(value: $0) }
+        cd.includeInMap = r.includeInMap
+        cd.mapName = r.mapName
+        cd.isCourseOnly = r.isCourseOnly
+        if !r.track.isEmpty {
+            cd.trackData = try? JSONEncoder().encode(r.track)
+            cd.trackCount = Int32(r.track.count)
+            cd.startCoordData = r.track.first.flatMap { try? JSONEncoder().encode($0) }
+            cd.endCoordData = r.track.last.flatMap { try? JSONEncoder().encode($0) }
+        } else {
+            cd.trackCount = Int32(r.trackCount)
+            if let s = r.startCoord { cd.startCoordData = try? JSONEncoder().encode(s) }
+            if let e = r.endCoord { cd.endCoordData = try? JSONEncoder().encode(e) }
         }
+        return cd
     }
 
-    /// 라이딩의 GPS 트랙을 디스크에서 비동기로 로드(상세·내보내기용). 메인 큐로 반환.
-    /// iCloud 전용 파일이면 최대 6회(1초 간격) 재시도하며, 매 시도는 `readTrack`의 자체
-    /// 타임아웃(기본 5초) 안에 반드시 끝난다 — ioQueue 는 더 이상 이 경로에 관여하지 않는다.
+    private static func deleteByID(_ id: UUID, in ctx: NSManagedObjectContext) {
+        let req = CDRide.fetchRequest()
+        req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        req.fetchLimit = 1
+        if let obj = try? ctx.fetch(req).first { ctx.delete(obj) }
+    }
+
+    // MARK: 트랙 로드 (상세·내보내기용)
+
+    /// 라이딩의 GPS 트랙을 로드한다. 로컬 Core Data 저장소에서 읽으므로 항상 빠르고(네트워크
+    /// 대기 없음) 결과는 메인 큐로 반환한다.
     func loadTrack(for record: RideRecord, completion: @escaping ([RideRecord.Coordinate]) -> Void) {
         if !record.track.isEmpty { completion(record.track); return }
         guard record.trackCount > 0 else { completion([]); return }
-        attemptLoadTrack(trackFileURL(record.id), retriesLeft: 6, completion: completion)
-    }
-
-    private func attemptLoadTrack(_ url: URL, retriesLeft: Int,
-                                  completion: @escaping ([RideRecord.Coordinate]) -> Void) {
-        Self.readTrack(url) { [weak self] coords in
-            guard coords.isEmpty, retriesLeft > 0 else {
-                DispatchQueue.main.async { completion(coords) }
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                self?.attemptLoadTrack(url, retriesLeft: retriesLeft - 1, completion: completion)
-            }
+        let id = record.id
+        container.performBackgroundTask { ctx in
+            let coords = Self.fetchTrack(id: id, in: ctx)
+            DispatchQueue.main.async { completion(coords) }
         }
     }
 
-    /// 동기 트랙 로드(이미 백그라운드 스레드인 내보내기에서 사용). `readTrack`이 `timeout` 안에
-    /// 반드시 한 번 완료하므로(아래 참고) 영원히 막히지 않는다.
+    /// 동기 트랙 로드(이미 백그라운드 스레드인 내보내기에서 사용).
     func loadTrackSync(_ record: RideRecord) -> [RideRecord.Coordinate] {
         if !record.track.isEmpty { return record.track }
         guard record.trackCount > 0 else { return [] }
-        return Self.readTrackSync(trackFileURL(record.id))
-    }
-
-    /// `readTrack`(비동기)의 완료를 동기적으로 기다리는 래퍼. 반드시 백그라운드 스레드에서
-    /// 호출할 것 — `readTrack` 자신이 `timeout` 안에 한 번은 completion을 부르므로, 이 대기는
-    /// 길어야 `timeout`초를 넘지 않는다.
-    private static func readTrackSync(_ url: URL, timeout: TimeInterval = 8) -> [RideRecord.Coordinate] {
-        let sema = DispatchSemaphore(value: 0)
         var result: [RideRecord.Coordinate] = []
-        readTrack(url, timeout: timeout) { coords in
-            result = coords
-            sema.signal()
-        }
-        sema.wait()
+        let ctx = container.newBackgroundContext()
+        ctx.performAndWait { result = Self.fetchTrack(id: record.id, in: ctx) }
         return result
     }
 
-    /// 빠르고 논블로킹: iCloud 전용 파일(로컬에 아직 안 받아짐)이면 다운로드만 요청하고 바로
-    /// 시도한다 — 여기서 기다리지 않는다.
-    ///
-    /// `NSFileCoordinator.coordinate(readingItemAt:)` 자체엔 타임아웃이 없다. 기기의 iCloud/
-    /// FileProvider 데몬이 불안정하면 이 호출이 **영영 반환하지 않을 수 있다** — 실기기(iPad
-    /// Pro)에서 "경로 불러오는 중"이 크래시도 없이 끝없이 도는 것으로 확인된 근본 원인이다.
-    /// 그래서 실제 coordinate 호출은 별도의 스로어웨이 글로벌 큐에서 돌리고, `timeout` 안에
-    /// 끝나지 않으면 빈 트랙으로 포기한 뒤 completion을 부른다. 나중에 그 coordinate 호출이
-    /// 뒤늦게 실제로 끝나더라도 `SingleShotCompletion` 덕분에 completion은 정확히 한 번만
-    /// 불린다(두 경로가 동시에 `result`를 건드리는 경쟁 상태가 생기지 않는다).
-    private static func readTrack(_ url: URL, timeout: TimeInterval = 5,
-                                   completion: @escaping ([RideRecord.Coordinate]) -> Void) {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+    private static func fetchTrack(id: UUID, in ctx: NSManagedObjectContext) -> [RideRecord.Coordinate] {
+        let req = CDRide.fetchRequest()
+        req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        req.fetchLimit = 1
+        guard let cd = try? ctx.fetch(req).first, let data = cd.trackData,
+              let coords = try? JSONDecoder().decode([RideRecord.Coordinate].self, from: data) else {
+            return []
         }
-        let once = SingleShotCompletion(completion)
-        DispatchQueue.global(qos: .utility).async {
-            var result: [RideRecord.Coordinate] = []
-            let coordinator = NSFileCoordinator(); var err: NSError?
-            coordinator.coordinate(readingItemAt: url, options: [], error: &err) { u in
-                if let data = try? Data(contentsOf: u),
-                   let coords = try? JSONDecoder().decode([RideRecord.Coordinate].self, from: data) {
-                    result = coords
-                }
-            }
-            once.fire(result)
-        }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
-            once.fire([])
-        }
+        return coords
     }
 
     // MARK: 누적 거리 집계 (records 변경 시 1회 갱신 + 영속화)
@@ -450,204 +457,41 @@ final class RideStore: ObservableObject {
         }
     }
 
-    // MARK: 영속화 (파일 코디네이터 — iCloud 안전 읽기/쓰기)
+    // MARK: 백업(zip) — 사용자가 직접 누르는 수동 내보내기/복원. 기기 간 동기화 자체는 더
+    // 이상 이 경로에 의존하지 않는다(CloudKit이 실시간으로 처리) — 이건 이동·보관용 스냅샷이다.
 
-    /// 디스크 읽기·디코딩을 **백그라운드(ioQueue)** 에서 수행하고 결과만 메인으로 반영한다.
-    /// (큰 rides.json 을 메인에서 디코딩하면 삭제·편집 직후 화면이 늦게 반응한다.)
-    private func load() {
-        let url = fileURL
-        let localBak = backupLocalURL
-        let cloudBak = backupCloudURL
-        ioQueue.async { [weak self] in
-            guard let self else { return }
-            let coordinator = NSFileCoordinator()
-            var err: NSError?
-            var fileData: Data?
-            coordinator.coordinate(readingItemAt: url, options: [], error: &err) { u in
-                fileData = try? Data(contentsOf: u)
-            }
-            // 우리가 방금 쓴 내용이 그대로 돌아온 경우(자기 쓰기 에코) 재로딩 생략.
-            if let data = fileData, data.hashValue == self.lastPersistedHash { return }
-
-            if let data = fileData,
-               let decoded = try? JSONDecoder().decode([RideRecord].self, from: data),
-               !decoded.isEmpty {
-                // 마이그레이션: 옛 형식(인라인 트랙)이면 라이딩별 트랙 파일로 분리하고
-                // rides.json 은 요약본으로 다시 쓴다. 이후 메모리엔 트랙을 두지 않는다.
-                let needsMigration = decoded.contains { !$0.track.isEmpty }
-                if needsMigration {
-                    try? FileManager.default.createDirectory(at: self.tracksDir,
-                                                             withIntermediateDirectories: true)
-                    for r in decoded where !r.track.isEmpty {
-                        if let d = try? JSONEncoder().encode(r.track) {
-                            try? d.write(to: self.trackFileURL(r.id), options: .atomic)
-                        }
-                    }
-                } else {
-                    self.lastPersistedHash = data.hashValue
-                }
-                let summaries = decoded.map { $0.summary() }
-                DispatchQueue.main.async {
-                    // 여러 기기를 쓸 때, 이 기기가 아직 iCloud에 반영 못 한 로컬 전용 기록(막
-                    // 추가한 라이딩 등)을 여기서 "들어온 내용으로 그대로 교체"하면 조용히
-                    // 사라질 수 있었다 — 다른 기기가 그 사이 먼저 저장한 걸 받아온 것뿐인데도.
-                    // 그대로 대입하는 대신 병합한다: 이미 양쪽에 있는 기록(시작 시각 기준)은
-                    // 들어온(= 이미 공유된) 내용을 따르고, 로컬에만 있는 기록은 그대로 보존한다.
-                    // (지도 코스로 복사한 자료의 중복 재생성 문제는 RideRecordMerge.merge 가
-                    // id 기준으로 따로 처리한다.)
-                    let merged = RideRecordMerge.merge(existing: self.records, incoming: summaries,
-                                                       incomingWins: true)
-                    self.records = merged
-                    let localOnly = Set(merged.map(\.id)) != Set(summaries.map(\.id))
-                    if needsMigration || localOnly { self.save() }   // 합쳐진 결과를 iCloud에도 반영
-                }
+    /// 현재 전체 기록(트랙 포함)을 백업 형식(JSON)으로 인코딩한다. progress 는 메인 큐에서 호출된다.
+    func makeBackupData(progress: ((Int, Int) -> Void)? = nil, completion: @escaping (Data?) -> Void) {
+        container.performBackgroundTask { ctx in
+            let req = CDRide.fetchRequest()
+            req.sortDescriptors = [NSSortDescriptor(key: "startedAt", ascending: false)]
+            guard let rows = try? ctx.fetch(req) else {
+                DispatchQueue.main.async { completion(nil) }
                 return
             }
-            // 메인 파일이 없거나 비었으면(재설치 직후 등) 백업에서 자동 복원.
-            if let restored = Self.loadBackupRecords(localURL: localBak, cloudURL: cloudBak) {
-                DispatchQueue.main.async { [weak self] in
-                    guard let self, self.records.isEmpty else { return }
-                    self.replaceAll(restored)   // 트랙 분리 저장 + 요약본 기록
+            let total = rows.count
+            var full: [RideRecord] = []
+            full.reserveCapacity(total)
+            for (i, cd) in rows.enumerated() {
+                full.append(Self.full(of: cd))
+                let done = i + 1
+                if done == total || done % 25 == 0 {
+                    DispatchQueue.main.async { progress?(done, total) }
                 }
             }
-        }
-    }
-
-    /// 저장은 **백그라운드(ioQueue)** 에서 수행하며, 연속 호출은 디바운스로 1회로 합친다.
-    /// 한 번 인코딩한 data 를 rides.json 과 백업 파일에 재사용한다(autoreleasepool).
-    private func save() {
-        let snapshot = records
-        let mainURL = fileURL
-        let localBak = backupLocalURL
-        let cloudBak = backupCloudURL
-        saveWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            autoreleasepool {
-                guard let self, let data = try? JSONEncoder().encode(snapshot) else { return }
-                self.lastPersistedHash = data.hashValue
-                try? FileManager.default.createDirectory(at: mainURL.deletingLastPathComponent(),
-                                                         withIntermediateDirectories: true)
-                let coordinator = NSFileCoordinator()
-                var err: NSError?
-                coordinator.coordinate(writingItemAt: mainURL, options: .forReplacing, error: &err) { u in
-                    try? data.write(to: u, options: .atomic)
-                }
-                // 자동 백업은 트랙까지 포함한 전체본(수동 zip 내보내기와 동일 포맷)으로 저장한다 —
-                // Tracks/ 폴더의 iCloud 증분 동기화에만 의존하지 않고, 백업 파일 자체가 자기완결적이
-                // 되도록 한다. 디바운스(0.4초) 덕분에 연속 변경은 1회로 합쳐지지만, 기록이 많으면
-                // 저장할 때마다 전체 트랙을 다시 읽어 인코딩하므로 rides.json 보다 비용이 크다.
-                guard let fullData = self.buildFullBackupData(from: snapshot) else {
-                    DispatchQueue.main.async { self.lastBackupFailed = true }
-                    return
-                }
-                // 쓰기 성공 여부를 실제로 확인한다 — `try?`로 삼키면 iCloud 저장 공간 부족·연결
-                // 끊김 등으로 조용히 실패해도 "마지막 백업 시각"이 그대로 갱신돼 버린다.
-                var succeeded = (try? fullData.write(to: localBak, options: .atomic)) != nil
-                if let cloudBak {
-                    var coordErr: NSError?
-                    var writeErr: Error?
-                    let c = NSFileCoordinator()
-                    c.coordinate(writingItemAt: cloudBak, options: .forReplacing, error: &coordErr) { u in
-                        do { try fullData.write(to: u, options: .atomic) } catch { writeErr = error }
-                    }
-                    if coordErr != nil || writeErr != nil { succeeded = false }
-                }
-                DispatchQueue.main.async { self.lastBackupFailed = !succeeded }
-                if succeeded {
-                    UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
-                }
-            }
-        }
-        saveWorkItem = work
-        ioQueue.asyncAfter(deadline: .now() + 0.4, execute: work)
-    }
-
-    // MARK: 자동 백업 (재설치·기기변경 시 라이딩 데이터 보존)
-    // rides.json 과 별개로 메타데이터가 포함된 백업 파일을 로컬(Files 앱에서 열람 가능)과
-    // iCloud(재설치해도 자동 복원)에 함께 저장한다.
-
-    static let lastBackupKey = "bike.lastBackupAt"
-    let backupFileName = "BikeCom-Backup.json"
-    private var backupLocalURL: URL {
-        localURL.deletingLastPathComponent().appendingPathComponent(backupFileName)
-    }
-    private var backupCloudURL: URL? {
-        cloudURL?.deletingLastPathComponent().appendingPathComponent(backupFileName)
-    }
-
-    /// 백업 봉투: 버전·저장시각·건수 + 전체 기록(트랙 포함).
-    struct Backup: Codable {
-        var version: Int = 1
-        var savedAt: Date = Date()
-        var count: Int
-        var records: [RideRecord]
-    }
-
-    /// 요약본(메모리)에 디스크의 트랙을 다시 채워 **트랙 포함 전체본**을 만든다.
-    /// 백업이 Health GPS·지도 코스(GPX) 트랙까지 보존하도록 한다. 백그라운드에서 호출.
-    ///
-    /// 트랙 읽기를 **최대 16개씩 동시에** 진행한다 — 예전엔 기록마다 순차로(1건씩) 읽어서,
-    /// 기록이 많을 때(시드 데이터 기준 ~1,900건) 로컬에 없는(iCloud 재다운로드가 필요한) 파일이
-    /// 몇 개만 섞여도 그 대기 시간이 고스란히 더해져("너무 느리다"는 체감의 실제 원인) 전체
-    /// 백업 생성이 N × 수 초로 늘어질 수 있었다. 동시에 여러 파일을 읽으면 가장 느린 소수의
-    /// 파일만 병렬로 기다리면 되므로 전체 소요 시간이 크게 줄어든다.
-    /// progress: (완료된 트랙 수, 전체 트랙 수)를 보고한다(임의의 백그라운드 스레드에서 호출됨 —
-    /// 호출부에서 메인 큐로 넘겨야 한다). 매번 호출하면 너무 잦으므로(기록 많으면 수천 번) 25건
-    /// 단위로만 보고한다.
-    private func buildFullBackupData(from summaries: [RideRecord],
-                                      progress: ((Int, Int) -> Void)? = nil) -> Data? {
-        var full = summaries
-        let indices = full.indices.filter { full[$0].track.isEmpty && full[$0].trackCount > 0 }
-        if !indices.isEmpty {
-            var tracks = [[RideRecord.Coordinate]](repeating: [], count: indices.count)
-            let group = DispatchGroup()
-            let limiter = DispatchSemaphore(value: 16)
-            let total = indices.count
-            var done = 0
-            let doneLock = NSLock()
-            tracks.withUnsafeMutableBufferPointer { buf in
-                for (i, idx) in indices.enumerated() {
-                    limiter.wait()
-                    group.enter()
-                    Self.readTrack(self.trackFileURL(full[idx].id)) { coords in
-                        buf[i] = coords
-                        doneLock.lock()
-                        done += 1
-                        let current = done
-                        doneLock.unlock()
-                        if current == total || current % 25 == 0 { progress?(current, total) }
-                        limiter.signal()
-                        group.leave()
-                    }
-                }
-                group.wait()
-            }
-            for (i, idx) in indices.enumerated() { full[idx].track = tracks[i] }
-        }
-        return try? JSONEncoder().encode(Backup(count: full.count, records: full))
-    }
-
-    /// 현재 전체 기록(트랙 포함)을 백업 형식(JSON)으로 인코딩한다(수동 내보내기·공유용).
-    /// 트랙 파일을 디스크에서 읽으므로 백그라운드(ioQueue)에서 수행하고 결과만 메인으로 반환.
-    /// progress 는 메인 큐에서 호출된다.
-    func makeBackupData(progress: ((Int, Int) -> Void)? = nil, completion: @escaping (Data?) -> Void) {
-        let snapshot = records
-        ioQueue.async { [weak self] in
-            let data = self?.buildFullBackupData(from: snapshot) { done, total in
-                DispatchQueue.main.async { progress?(done, total) }
-            }
+            let data = try? JSONEncoder().encode(Backup(count: full.count, records: full))
             DispatchQueue.main.async { completion(data) }
         }
     }
 
     /// 현재 전체 기록(트랙 포함)을 zip 백업 파일로 만든다(공유·복원용). progress 는 메인 큐에서 호출된다.
     func makeBackupZip(progress: ((Int, Int) -> Void)? = nil, completion: @escaping (URL?) -> Void) {
-        makeBackupData(progress: progress) { [weak self] data in
-            guard let self, let data else {
+        makeBackupData(progress: progress) { data in
+            guard let data else {
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
-            self.ioQueue.async {
+            DispatchQueue.global(qos: .utility).async {
                 let fm = FileManager.default
                 let df = DateFormatter(); df.dateFormat = "yyyyMMdd-HHmm"
                 let stamp = df.string(from: Date())
@@ -660,42 +504,33 @@ final class RideStore: ObservableObject {
                     try data.write(to: jsonURL, options: .atomic)
                     try BackupZip.createArchive(jsonURL: jsonURL, zipURL: zipURL)
                     try? fm.removeItem(at: folder)
-                    DispatchQueue.main.async { completion(zipURL) }
+                    UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
+                    DispatchQueue.main.async {
+                        self.lastBackupFailed = false
+                        completion(zipURL)
+                    }
                 } catch {
                     try? fm.removeItem(at: folder)
-                    DispatchQueue.main.async { completion(nil) }
+                    DispatchQueue.main.async {
+                        self.lastBackupFailed = true
+                        completion(nil)
+                    }
                 }
             }
         }
     }
 
-    /// 백업 파일에서 기록을 읽는다(iCloud 우선, 없으면 로컬). 백그라운드에서 호출.
-    private static func loadBackupRecords(localURL: URL, cloudURL: URL?) -> [RideRecord]? {
-        for url in [cloudURL, localURL].compactMap({ $0 }) {
-            if let data = try? Data(contentsOf: url),
-               let b = try? JSONDecoder().decode(Backup.self, from: data), !b.records.isEmpty {
-                return b.records
-            }
-            if let data = try? Data(contentsOf: url),
-               let arr = try? JSONDecoder().decode([RideRecord].self, from: data), !arr.isEmpty {
-                return arr
-            }
-        }
-        return nil
-    }
-
-    /// 사용자가 고른 백업 파일(JSON 또는 zip)을 병합 복원한다.
-    /// progress: 파일명·건수·트랙 저장 진행을 메인 큐로 보고한다.
+    /// 사용자가 고른 백업 파일(JSON 또는 zip)을 병합 복원한다. 기존 기록은 그대로 두고(겹치는
+    /// 시작 시각이면 기존 걸 유지) 없는 기록만 Core Data에 추가한다 — 덮어쓰기·삭제가 없으므로
+    /// 이 복원으로 현재 기기나 다른 기기의 최신 데이터가 사라지는 일은 없다.
+    /// progress: 파일명·건수·저장 진행을 메인 큐로 보고한다.
     func restoreBackup(from url: URL,
                        existing: [RideRecord],
                        progress: @escaping (String) -> Void,
                        completion: @escaping (Int) -> Void) {
         let fileName = url.lastPathComponent
-        ioQueue.async { [weak self] in
-            guard let self else {
-                DispatchQueue.main.async { completion(0) }
-                return
-            }
+        container.performBackgroundTask { [weak self] ctx in
+            guard let self else { DispatchQueue.main.async { completion(0) }; return }
             DispatchQueue.main.async { progress("백업 읽는 중: \(fileName)") }
 
             let scoped = url.startAccessingSecurityScopedResource()
@@ -744,89 +579,28 @@ final class RideStore: ObservableObject {
             }
 
             for (index, record) in merged.enumerated() {
-                self.writeTrackFileSync(record)
+                Self.upsert(record, in: ctx)
                 let done = index + 1
-                if done == total || done % 3 == 0 {
+                if done == total || done % 25 == 0 {
                     DispatchQueue.main.async {
                         progress("복원 중: \(fileName) · \(done)/\(total)")
                     }
                 }
             }
+            do { try ctx.save() } catch { print("restoreBackup 저장 실패: \(error)") }
 
-            self.pruneTrackFilesSync(keeping: Set(merged.map(\.id)))
             DispatchQueue.main.async {
                 progress("저장 중: \(fileName)")
-                self.records = merged.map { $0.summary() }
-                self.save()
+                self.refreshRecords()
                 completion(total)
             }
         }
     }
-
-    // MARK: iCloud 동기화
-
-    private func resolveCloud() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self else { return }
-            guard let container = CloudDocuments.containerURL() else { return }
-            let docs = container.appendingPathComponent("Documents", isDirectory: true)
-            try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
-            let url = docs.appendingPathComponent(self.fileName)
-            DispatchQueue.main.async {
-                self.cloudURL = url
-                self.migrateLocalToCloudIfNeeded()
-                self.load()
-                self.startMetadataQuery()
-            }
-        }
-    }
-
-    /// 로컬에만 기록이 있고 iCloud 엔 아직 없으면 1회 업로드. 트랙 파일도 iCloud 로 이전.
-    private func migrateLocalToCloudIfNeeded() {
-        guard let cloudURL else { return }
-        let fm = FileManager.default
-        if !fm.fileExists(atPath: cloudURL.path), fm.fileExists(atPath: localURL.path),
-           let data = try? Data(contentsOf: localURL) {
-            try? data.write(to: cloudURL, options: .atomic)
-        }
-        // 로컬 Tracks/* → iCloud Tracks/ 이전(없는 것만). 파일 수가 많아 백그라운드에서.
-        let localTd = localTracksDir
-        let cloudTd = cloudURL.deletingLastPathComponent().appendingPathComponent("Tracks", isDirectory: true)
-        guard localTd.path != cloudTd.path else { return }
-        ioQueue.async {
-            guard let files = try? fm.contentsOfDirectory(at: localTd, includingPropertiesForKeys: nil) else { return }
-            try? fm.createDirectory(at: cloudTd, withIntermediateDirectories: true)
-            for f in files where f.pathExtension == "json" {
-                let dst = cloudTd.appendingPathComponent(f.lastPathComponent)
-                guard !fm.fileExists(atPath: dst.path) else { continue }
-                let c = NSFileCoordinator(); var e: NSError?
-                c.coordinate(writingItemAt: dst, options: .forReplacing, error: &e) { u in
-                    try? fm.copyItem(at: f, to: u)
-                }
-            }
-        }
-    }
-
-    /// 다른 기기에서 바뀐 rides.json 을 감지해 다시 불러온다.
-    private func startMetadataQuery() {
-        guard cloudURL != nil, CloudDocuments.isAvailable else { return }
-        let q = NSMetadataQuery()
-        q.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
-        q.predicate = NSPredicate(format: "%K == %@", NSMetadataItemFSNameKey, fileName)
-        NotificationCenter.default.addObserver(self, selector: #selector(cloudChanged),
-                                               name: .NSMetadataQueryDidFinishGathering, object: q)
-        NotificationCenter.default.addObserver(self, selector: #selector(cloudChanged),
-                                               name: .NSMetadataQueryDidUpdate, object: q)
-        q.start()
-        metadataQuery = q
-    }
-
-    @objc private func cloudChanged() {
-        load()
-    }
 }
 
-/// iCloud Documents 컨테이너 접근. 미로그인·권한 없으면 nil → 로컬 폴백.
+/// iCloud Documents 컨테이너 접근(GPX 내보내기 폴더 위치용). 미로그인·권한 없으면 nil → 로컬 폴백.
+/// Core Data/CloudKit 동기화와는 별개로, 사용자가 직접 보는 GPX 파일을 iCloud Drive에
+/// 두기 위한 것이라 그대로 유지한다.
 enum CloudDocuments {
     static let containerID = "iCloud.com.jaisungnoh.bikecom"
 
