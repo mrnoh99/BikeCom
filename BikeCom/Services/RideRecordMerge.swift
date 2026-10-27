@@ -7,8 +7,15 @@ enum RideRecordMerge {
     /// `incomingWins == true` 이면 같은 시작 시각의 기존 기록을 incoming 으로 교체(Health 우선).
     /// `false` 이면 기존 기록을 유지하고 없는 키만 추가(베이스라인 최초 주입).
     static func merge(existing: [RideRecord], incoming: [RideRecord], incomingWins: Bool) -> [RideRecord] {
-        // 지도 코스 자료는 병합/중복 제거 대상에서 제외하고 항상 보존한다(같은 시작 시각 복사본 허용).
-        let courses = (existing + incoming).filter { $0.isCourseOnly }
+        // 지도 코스 자료는 시작 시각 기준 병합(같은 시작 시각 복사본 허용) 대상에서 빼지만,
+        // id 기준으로는 중복 제거한다 — 같은 백업을 반복 복원하거나(수동 복원) 매 iCloud
+        // 동기화마다(자동, cloudChanged → load) existing·incoming 양쪽에 같은 코스가 들어있어
+        // 그대로 이어 붙이면 호출될 때마다 코스가 계속 늘어나기 때문이다.
+        var coursesByID: [UUID: RideRecord] = [:]
+        for r in existing where r.isCourseOnly { coursesByID[r.id] = r }
+        for r in incoming where r.isCourseOnly {
+            if incomingWins || coursesByID[r.id] == nil { coursesByID[r.id] = r }
+        }
         let mergeable = existing.filter { !$0.isCourseOnly }
         // 같은 시작 시각이 둘 이상이어도 크래시하지 않도록 uniquingKeysWith 사용(먼저 것 유지).
         var byStart = Dictionary(mergeable.map { (startKey(for: $0.startedAt), $0) },
@@ -19,7 +26,7 @@ enum RideRecordMerge {
                 byStart[key] = rec
             }
         }
-        return courses + byStart.values.sorted { $0.startedAt > $1.startedAt }
+        return Array(coursesByID.values) + byStart.values.sorted { $0.startedAt > $1.startedAt }
     }
 
     /// 두 기록이 같은 라이딩인지(소스가 달라도). 시작 시각 ±180초 +

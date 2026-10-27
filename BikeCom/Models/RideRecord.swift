@@ -488,8 +488,18 @@ final class RideStore: ObservableObject {
                 }
                 let summaries = decoded.map { $0.summary() }
                 DispatchQueue.main.async {
-                    self.records = summaries
-                    if needsMigration { self.save() }   // rides.json 을 요약본으로 재기록
+                    // 여러 기기를 쓸 때, 이 기기가 아직 iCloud에 반영 못 한 로컬 전용 기록(막
+                    // 추가한 라이딩 등)을 여기서 "들어온 내용으로 그대로 교체"하면 조용히
+                    // 사라질 수 있었다 — 다른 기기가 그 사이 먼저 저장한 걸 받아온 것뿐인데도.
+                    // 그대로 대입하는 대신 병합한다: 이미 양쪽에 있는 기록(시작 시각 기준)은
+                    // 들어온(= 이미 공유된) 내용을 따르고, 로컬에만 있는 기록은 그대로 보존한다.
+                    // (지도 코스로 복사한 자료의 중복 재생성 문제는 RideRecordMerge.merge 가
+                    // id 기준으로 따로 처리한다.)
+                    let merged = RideRecordMerge.merge(existing: self.records, incoming: summaries,
+                                                       incomingWins: true)
+                    self.records = merged
+                    let localOnly = Set(merged.map(\.id)) != Set(summaries.map(\.id))
+                    if needsMigration || localOnly { self.save() }   // 합쳐진 결과를 iCloud에도 반영
                 }
                 return
             }
