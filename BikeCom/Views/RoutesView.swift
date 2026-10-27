@@ -207,6 +207,9 @@ struct RoutesView: View {
             Button { deferMenuAction { showConsolidateConfirm = true } } label: {
                 Label("기록 통합 정리", systemImage: "arrow.triangle.merge")
             }
+            Button { deferMenuAction { session.scanForDuplicateCandidates() } } label: {
+                Label("중복 기록 검사", systemImage: "doc.on.doc")
+            }
             Divider()
             Button { deferMenuAction { session.importFromHealth() } } label: {
                 Label("Apple Health에서 가져오기", systemImage: "heart.text.square")
@@ -1153,7 +1156,7 @@ private struct ConsolidateConfirmSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple Health 기록을 보충합니다. 주행거리 1.5km 이하·속도 0 기록은 일괄 삭제합니다. 완료 후 기존 기록과 시간이 겹치는 Health 기록, 같은 날·같은 코스 중복 기록을 찾아 삭제 확인 화면을 띄웁니다.")
+                Text("Cyclemeter(트랙)·앱·GPX 기록을 기본으로 두고, 겹치지 않는 Apple Health 기록을 보충합니다. 주행거리 1.5km 이하·속도 0 기록은 일괄 삭제합니다. 이후 남아있을 수 있는 중복은 별도로 \"중복 기록 검사\" 메뉴에서 확인하세요.")
                     .font(.callout)
                     .foregroundColor(.secondary)
                 Button(role: .destructive) {

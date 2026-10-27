@@ -237,7 +237,6 @@ final class RideSession: ObservableObject {
                 self.health.refreshTotals()
                 self.importStatus = "정리 완료: \(result.count)개 기록 · 1.5km 이하 \(removed)개 삭제 (Health 후보 \(healthRides.count))"
                 self.refreshDataStats()
-                self.scanForDuplicateCandidates()
             }
         })
     }
@@ -278,7 +277,10 @@ final class RideSession: ObservableObject {
         dupGroups.sort { ($0.first?.startedAt ?? .distantPast) > ($1.first?.startedAt ?? .distantPast) }
 
         let candidates = DuplicateCandidates(overlappingHealth: overlappingHealth, sameDayCourseGroups: dupGroups)
-        guard !candidates.isEmpty else { return }
+        guard !candidates.isEmpty else {
+            importStatus = "중복 기록 후보가 없습니다"
+            return
+        }
         duplicateCandidates = candidates
     }
 

@@ -222,13 +222,17 @@ BikeComWatch/                  # 애플워치 앱
   심박·최대 케이던스 + 경로)을 Routes 로 채움(이미 건강에 있을 때 최선). ② **Cyclemeter GPX 가져오기** —
   여러 `.gpx` 파일/폴더 선택(건강에 없거나 경로 없는 기록용). 둘 다 **시작시각 중복 제외**.
   누적 거리는 건강 기준이라 ①은 이미 반영되어 있고 가져오기는 Routes 표시용이다.
-- **기록 통합 정리**(Routes 탭 ⤓ 메뉴): `consolidateRoutes()` — 앱·GPX·Cyclemeter 기록을 기본으로 두고
-  겹치지 않는 Health 기록만 보충, 1.5km 이하·속도 0 기록은 일괄 삭제. 완료 직후
-  `scanForDuplicateCandidates()` 가 ① 다른 소스 기록과 시간 구간이 겹치는 Health 기록(이미 포함돼
-  중복), ② 같은 코스(`RouteGrouping`, GPS 시작/끝+거리 기준)·같은 날짜에 2건 이상인 GPX 등 중복 후보를
-  찾아 `DuplicateReviewSheet` 확인 화면을 띄운다. 기본 선택은 Health 겹침 전체 + 그룹별 GPS 포인트가
-  가장 많은 기록만 보존하고 나머지 체크 — 사용자가 체크를 조정한 뒤 "삭제" 버튼을 눌러야 실제 삭제된다
-  (`confirmDeleteDuplicates`, 자동 삭제 없음).
+- **기록 통합 정리 / 중복 기록 검사**(Routes 탭 ⤓ 메뉴, 별도 두 메뉴로 분리):
+  1. **기록 통합 정리** — `consolidateRoutes()`: 앱·GPX·Cyclemeter 기록을 기본으로 두고 겹치지 않는
+     Health 기록만 보충, 1.5km 이하·속도 0 기록은 일괄 삭제. 가져오기 시점엔 `RideRecordMerge.isDuplicate`
+     (시작 ±180초·시간 ±120초)라는 엄격한 기준만 쓴다.
+  2. **중복 기록 검사** — `scanForDuplicateCandidates()`: 1번과 별개로 언제든 단독 실행 가능. 더 느슨한
+     기준으로 ① 다른 소스 기록과 시간 구간이 조금이라도 겹치는 Health 기록(`RideRecordMerge.
+     timeRangesOverlap`, 이미 포함돼 중복), ② 같은 코스(`RouteGrouping`, GPS 시작/끝+거리 기준)·같은
+     날짜에 2건 이상인 중복 후보를 찾아 `DuplicateReviewSheet` 확인 화면을 띄운다(후보가 없으면
+     상태 메시지만 표시). 기본 선택은 Health 겹침 전체 + 그룹별 GPS 포인트가 가장 많은 기록만 보존하고
+     나머지 체크 — 사용자가 체크를 조정한 뒤 "삭제" 버튼을 눌러야 실제 삭제된다(`confirmDeleteDuplicates`,
+     자동 삭제 없음).
 - **자동 백업**: 기록이 바뀔 때마다(0.4초 디바운스) `rides.json`(요약본, 앱 자체 빠른 로드용)과는
   별도로 `BikeCom-Backup.json`을 로컬 Documents + iCloud Documents 컨테이너에 함께 저장한다.
   이 백업 파일은 **트랙까지 포함한 전체본**(수동 zip 내보내기와 동일 포맷, `buildFullBackupData`)이라
