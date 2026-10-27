@@ -158,6 +158,12 @@ final class RideStore: ObservableObject {
         didSet { recomputeAggregates() }
     }
 
+    /// 가장 최근 자동 백업 시도가 실제로 실패했는지. 예전엔 iCloud 쓰기가 조용히 실패해도
+    /// "마지막 백업 시각"(UserDefaults)만 그대로 갱신돼, 재설치 시 복원해보기 전까진 사용자가
+    /// 전혀 눈치챌 수 없었다("6월 스냅샷에 멈춰 있던" 문제의 유력한 원인). 이제 로컬·iCloud
+    /// 쓰기가 실제로 성공했을 때만 그 시각을 갱신하고, 실패하면 이 플래그로 화면에 알린다.
+    @Published private(set) var lastBackupFailed = false
+
     // MARK: 누적 거리 캐시 (오도미터 방식)
     // 렌더마다 records 전체를 합산하지 않도록, 변경 시에만 1회 갱신해 캐시한다.
     // 월별 버킷(year*100+month → m)을 들고 있으면 이번 달·올해·전체를 즉시 계산할 수 있고,
@@ -520,15 +526,26 @@ final class RideStore: ObservableObject {
                 // Tracks/ 폴더의 iCloud 증분 동기화에만 의존하지 않고, 백업 파일 자체가 자기완결적이
                 // 되도록 한다. 디바운스(0.4초) 덕분에 연속 변경은 1회로 합쳐지지만, 기록이 많으면
                 // 저장할 때마다 전체 트랙을 다시 읽어 인코딩하므로 rides.json 보다 비용이 크다.
-                guard let fullData = self.buildFullBackupData(from: snapshot) else { return }
-                try? fullData.write(to: localBak, options: .atomic)
-                if let cloudBak {
-                    let c = NSFileCoordinator(); var e: NSError?
-                    c.coordinate(writingItemAt: cloudBak, options: .forReplacing, error: &e) { u in
-                        try? fullData.write(to: u, options: .atomic)
-                    }
+                guard let fullData = self.buildFullBackupData(from: snapshot) else {
+                    DispatchQueue.main.async { self.lastBackupFailed = true }
+                    return
                 }
-                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
+                // 쓰기 성공 여부를 실제로 확인한다 — `try?`로 삼키면 iCloud 저장 공간 부족·연결
+                // 끊김 등으로 조용히 실패해도 "마지막 백업 시각"이 그대로 갱신돼 버린다.
+                var succeeded = (try? fullData.write(to: localBak, options: .atomic)) != nil
+                if let cloudBak {
+                    var coordErr: NSError?
+                    var writeErr: Error?
+                    let c = NSFileCoordinator()
+                    c.coordinate(writingItemAt: cloudBak, options: .forReplacing, error: &coordErr) { u in
+                        do { try fullData.write(to: u, options: .atomic) } catch { writeErr = error }
+                    }
+                    if coordErr != nil || writeErr != nil { succeeded = false }
+                }
+                DispatchQueue.main.async { self.lastBackupFailed = !succeeded }
+                if succeeded {
+                    UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
+                }
             }
         }
         saveWorkItem = work

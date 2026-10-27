@@ -253,6 +253,10 @@ struct RoutesView: View {
                     Label("백업 zip에서 복원", systemImage: "arrow.down.doc")
                 }
                 .disabled(session.isRestoringFromBackup)
+                if session.store.lastBackupFailed {
+                    Label("자동 백업 실패 — iCloud 저장 공간·연결 확인", systemImage: "exclamationmark.icloud")
+                        .foregroundColor(.orange)
+                }
                 if lastBackupAt > 0 {
                     Label("마지막 자동 백업: \(backupTimeText)", systemImage: "checkmark.icloud")
                 }
