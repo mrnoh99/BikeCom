@@ -492,6 +492,12 @@ struct MapSettingsSheet: View {
     @AppStorage("map.provider") private var providerRaw = MapProvider.apple.rawValue
     @AppStorage(GMapsConfig.defaultsKey) private var googleApiKeyInput = ""
     @AppStorage(NaverConfig.defaultsKey) private var naverClientIdInput = ""
+    private enum APIKeyField: Hashable { case google, naver }
+    @FocusState private var focusedKeyField: APIKeyField?
+    /// 마지막으로 SDK에 적용한 키 — 같은 값으로 중복 호출해 Google Maps SDK 내부 인스턴스가
+    /// 불필요하게 또 생기는 것을 막는다("Multiple instances of CCTClearcutUploader" 로그 원인).
+    @State private var lastAppliedGoogleKey = ""
+    @State private var lastAppliedNaverKey = ""
 
     /// 지도 코스 자료(isCourseOnly) + GPS 있는 코스만, 표시 이름순.
     private var courseRecords: [RideRecord] {
@@ -501,6 +507,22 @@ struct MapSettingsSheet: View {
     }
     private func courseName(_ r: RideRecord) -> String {
         (r.mapName?.isEmpty == false ? r.mapName! : r.name)
+    }
+
+    private func applyGoogleKey() {
+        #if canImport(GoogleMaps)
+        guard !googleApiKeyInput.isEmpty, googleApiKeyInput != lastAppliedGoogleKey else { return }
+        GMSServices.provideAPIKey(googleApiKeyInput)
+        lastAppliedGoogleKey = googleApiKeyInput
+        #endif
+    }
+
+    private func applyNaverKey() {
+        #if canImport(NMapsMap)
+        guard !naverClientIdInput.isEmpty, naverClientIdInput != lastAppliedNaverKey else { return }
+        NMFAuthManager.shared().ncpKeyId = naverClientIdInput
+        lastAppliedNaverKey = naverClientIdInput
+        #endif
     }
 
     var body: some View {
@@ -526,27 +548,29 @@ struct MapSettingsSheet: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .multilineTextAlignment(.trailing)
+                            .focused($focusedKeyField, equals: .google)
                     }
                     LabeledContent("네이버 Client ID") {
                         TextField("NCP Client ID", text: $naverClientIdInput)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .multilineTextAlignment(.trailing)
+                            .focused($focusedKeyField, equals: .naver)
                     }
                 } header: {
                     Text("지도 API 키")
                 } footer: {
                     Text("Google Cloud Console(Maps SDK for iOS)과 Naver Cloud Platform(Maps · AI NAVER API)에서 발급한 키를 입력하면 앱을 다시 빌드하지 않아도 바로 적용됩니다. 비워두면 빌드에 고정된 키(있는 경우) 또는 Apple 지도를 사용합니다.")
                 }
-                .onChange(of: googleApiKeyInput) { _, newValue in
-                    #if canImport(GoogleMaps)
-                    if !newValue.isEmpty { GMSServices.provideAPIKey(newValue) }
-                    #endif
+                // 키 입력 중 매 글자마다 SDK를 재초기화하지 않도록, 해당 필드에서 포커스가 빠질 때만
+                // 적용한다(앱 전체에서 provideAPIKey 호출 1회 = GMS 내부 업로더 인스턴스 1개).
+                .onChange(of: focusedKeyField) { old, _ in
+                    if old == .google { applyGoogleKey() }
+                    if old == .naver { applyNaverKey() }
                 }
-                .onChange(of: naverClientIdInput) { _, newValue in
-                    #if canImport(NMapsMap)
-                    if !newValue.isEmpty { NMFAuthManager.shared().ncpKeyId = newValue }
-                    #endif
+                .onDisappear {
+                    applyGoogleKey()
+                    applyNaverKey()
                 }
 
                 Section("코스 선택") {
