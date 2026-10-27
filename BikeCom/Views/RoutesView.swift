@@ -611,6 +611,9 @@ struct RideDetailView: View {
     @State private var endPlace = ""
     @State private var mapNameDraft = ""
     @State private var addedCourseName: String?
+    /// 트랙 로드를 시도했는데 비어서 돌아온 경우(iCloud 미동기화 등) — "경로 불러오는 중"이
+    /// 영원히 도는 대신 재시도 버튼을 보여주기 위한 상태.
+    @State private var trackLoadFailed = false
 
     init(record: RideRecord, unit: DistanceUnit) {
         _record = State(initialValue: record)
@@ -733,6 +736,8 @@ struct RideDetailView: View {
                     StaticRouteMap(track: coords)
                         .frame(height: 260)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else if trackLoadFailed {
+                    failedTrackPlaceholder
                 } else if record.trackCount > 1 {
                     loadingTrackPlaceholder
                 } else {
@@ -846,15 +851,7 @@ struct RideDetailView: View {
         } message: {
             Text("‘\(addedCourseName ?? "")’ 코스가 지도 코스 목록에 추가되었습니다.")
         }
-        .onAppear {
-            guard loadedTrack.isEmpty, record.trackCount > 0 else { return }
-            session.store.loadTrack(for: record) { t in
-                loadedTrack = t
-                derived = computeDerived(t)
-                var rec = record; rec.track = t
-                gpxURL = GPXExporter.writeTempGPX(rec)
-            }
-        }
+        .onAppear { loadTrackIfNeeded() }
         .task {
             guard record.trackCount > 1 else { return }
             if startPlace.isEmpty, let s = record.startCoord {
@@ -926,12 +923,43 @@ struct RideDetailView: View {
         record = r
     }
 
+    /// 트랙 로드 시도(최초 또는 재시도 공통). 결과가 비어 있으면("아직 로드 중"이 아니라 "실패") 재시도
+    /// 버튼을 보여줄 수 있도록 trackLoadFailed 를 세운다 — iCloud 미동기화 등으로 RideStore가 빈 배열을
+    /// 돌려줬을 때 "경로 불러오는 중"이 영원히 도는 걸 막는다.
+    private func loadTrackIfNeeded() {
+        guard loadedTrack.isEmpty, record.trackCount > 0 else { return }
+        trackLoadFailed = false
+        session.store.loadTrack(for: record) { t in
+            guard !t.isEmpty else { trackLoadFailed = true; return }
+            loadedTrack = t
+            derived = computeDerived(t)
+            var rec = record; rec.track = t
+            gpxURL = GPXExporter.writeTempGPX(rec)
+        }
+    }
+
     private var loadingTrackPlaceholder: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.1))
             VStack(spacing: 8) {
                 ProgressView()
                 Text("경로 불러오는 중…").font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .frame(height: 260)
+    }
+
+    private var failedTrackPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.1))
+            VStack(spacing: 8) {
+                Image(systemName: "icloud.slash").font(.system(size: 26)).foregroundColor(.secondary)
+                Text("경로를 불러오지 못했습니다").font(.subheadline).foregroundColor(.secondary)
+                Text("iCloud 동기화가 안 됐을 수 있습니다. Wi-Fi 연결 상태를 확인한 뒤 다시 시도하세요.")
+                    .font(.caption2).foregroundColor(.secondary).multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                Button("다시 시도") { loadTrackIfNeeded() }
+                    .buttonStyle(.bordered)
             }
         }
         .frame(height: 260)

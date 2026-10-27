@@ -321,9 +321,16 @@ final class RideStore: ObservableObject {
     }
 
     private static func readTrack(_ url: URL) -> [RideRecord.Coordinate] {
-        // iCloud 파일이 아직 안 받아졌으면 다운로드를 요청하고 코디네이트 읽기로 받는다.
+        // iCloud 전용 파일(로컬에 아직 안 받아짐)이면 다운로드를 요청한 뒤, 파일이 실제로 나타날
+        // 때까지 최대 몇 초 기다린다 — 요청만 하고 바로 읽으면 다운로드가 끝나기 전이라 빈 배열로
+        // 끝나버려서(상세 화면이 "경로 불러오는 중"에서 영영 멈추는 원인) 트랙이 있는데도 못 읽는다.
+        // readTrack 은 항상 백그라운드 큐에서 호출되므로 짧게 블로킹 대기해도 UI 는 안 멈춘다.
         if !FileManager.default.fileExists(atPath: url.path) {
             try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            let deadline = Date().addingTimeInterval(8)
+            while !FileManager.default.fileExists(atPath: url.path), Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.3)
+            }
         }
         var result: [RideRecord.Coordinate] = []
         let coordinator = NSFileCoordinator(); var err: NSError?
