@@ -473,6 +473,18 @@ enum NaverConfig {
         return (Bundle.main.object(forInfoDictionaryKey: "NMFNcpKeyId") as? String) ?? ""
     }
     static var hasKey: Bool { !clientId.isEmpty }
+
+    /// 프로세스 전체에서 마지막으로 SDK에 적용한 값 — GMapsConfig.applyIfNeeded 와 동일한
+    /// 이유로 중복 호출을 막는다.
+    private static var appliedKey: String?
+
+    static func applyIfNeeded(_ key: String) {
+        guard !key.isEmpty, key != appliedKey else { return }
+        #if canImport(NMapsMap)
+        NMFAuthManager.shared().ncpKeyId = key
+        #endif
+        appliedKey = key
+    }
 }
 
 /// 카카오 지도 JavaScript 키(Info.plist: KakaoJavaScriptAppKey). 없으면 Apple 폴백.
@@ -494,10 +506,6 @@ struct MapSettingsSheet: View {
     @AppStorage(NaverConfig.defaultsKey) private var naverClientIdInput = ""
     private enum APIKeyField: Hashable { case google, naver }
     @FocusState private var focusedKeyField: APIKeyField?
-    /// 마지막으로 SDK에 적용한 키 — 같은 값으로 중복 호출해 Google Maps SDK 내부 인스턴스가
-    /// 불필요하게 또 생기는 것을 막는다("Multiple instances of CCTClearcutUploader" 로그 원인).
-    @State private var lastAppliedGoogleKey = ""
-    @State private var lastAppliedNaverKey = ""
 
     /// 지도 코스 자료(isCourseOnly) + GPS 있는 코스만, 표시 이름순.
     private var courseRecords: [RideRecord] {
@@ -509,21 +517,9 @@ struct MapSettingsSheet: View {
         (r.mapName?.isEmpty == false ? r.mapName! : r.name)
     }
 
-    private func applyGoogleKey() {
-        #if canImport(GoogleMaps)
-        guard !googleApiKeyInput.isEmpty, googleApiKeyInput != lastAppliedGoogleKey else { return }
-        GMSServices.provideAPIKey(googleApiKeyInput)
-        lastAppliedGoogleKey = googleApiKeyInput
-        #endif
-    }
+    private func applyGoogleKey() { GMapsConfig.applyIfNeeded(googleApiKeyInput) }
 
-    private func applyNaverKey() {
-        #if canImport(NMapsMap)
-        guard !naverClientIdInput.isEmpty, naverClientIdInput != lastAppliedNaverKey else { return }
-        NMFAuthManager.shared().ncpKeyId = naverClientIdInput
-        lastAppliedNaverKey = naverClientIdInput
-        #endif
-    }
+    private func applyNaverKey() { NaverConfig.applyIfNeeded(naverClientIdInput) }
 
     var body: some View {
         NavigationStack {
