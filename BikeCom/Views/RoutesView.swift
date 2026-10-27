@@ -103,6 +103,14 @@ struct RideRow: View {
 /// Routes 탭 — 저장된 라이딩 목록(정렬 변경 + 코스별 묶어보기) + 상세.
 struct RoutesView: View {
     @EnvironmentObject var session: RideSession
+    /// `session.store`를 **별도의 EnvironmentObject로 직접** 구독한다(아래 DashboardView에서 주입).
+    /// 전에는 session.store.records를 `.onReceive(session.store.objectWillChange)` +
+    /// `DispatchQueue.main.async`로 손수 캐싱했는데, 이 수동 전달 경로가 SwiftUI의 자체 업데이트
+    /// 트랜잭션과 타이밍이 어긋나 List(ForEach)가 트랜잭션 도중의 배열을 읽다가 실제 기기 크래시
+    /// (Data Abort — KeyPath._projectReadOnly 중 메모리 접근 오류)로 이어졌다. `store`를 직접
+    /// EnvironmentObject로 구독하면 SwiftUI 자신의(검증된) 업데이트 스케줄링을 그대로 타면서도,
+    /// `records`가 실제로 바뀔 때만(= session의 심박·속도 등 무관한 변경과 분리) 재평가된다.
+    @EnvironmentObject var store: RideStore
     @State private var sort: RideSort = .newest
     @State private var grouped = false
     @State private var showImporter = false
@@ -112,19 +120,16 @@ struct RoutesView: View {
     @State private var exporting = false
     @AppStorage("route.bucketMeters") private var bucketMeters: Double = 250
     @AppStorage(RideStore.lastBackupKey) private var lastBackupAt: Double = 0
-    /// 정렬·코스 묶음(RouteGrouping)은 기록이 많으면(수천 건) 꽤 무거운 계산이다. `session`은
-    /// 심박·속도 등 라이딩 중에도 자주 바뀌는 값들을 함께 발행하는 @EnvironmentObject라서, 이걸
-    /// body 안의 평범한 computed property로 두면 **records 와 무관한** 변경에도 매번 다시
-    /// 계산된다 — 큰 데이터셋에서 메인 스레드가 오래 막혀 워치독에 의해 앱이 종료될 수 있다.
-    /// RideStore 자신의 objectWillChange(= records 가 실제로 바뀔 때만)에만 반응해 캐시한다.
-    @State private var cachedFlatRecords: [RideRecord] = []
-    @State private var cachedGroups: [RouteGroup] = []
-    /// 실제 크래시 리포트(0x8BADF00D scene-update watchdog, 10초 초과)로 확인된 근본 원인:
-    /// SwiftUI List/ForEach가 전체 기록(수천 건)을 한 번에 diff·배치하는 게 너무 느려서(특히
-    /// 저사양 기기) 메인 스레드 업데이트가 워치독 허용 시간을 넘겨 앱이 강제 종료됐다. 캐싱만으론
-    /// 부족하고, 화면에 실제로 넣는 개수 자체를 제한(페이지네이션)해야 한다.
+    /// 실제 기기 크래시 리포트(0x8BADF00D, 10초 초과 워치독)로 확인된 원인: SwiftUI List/ForEach가
+    /// 전체 기록(수천 건)을 한 번에 diff·배치하면 메인 스레드가 오래 막혀 앱이 강제 종료될 수 있다.
+    /// 화면엔 visibleFlatCount 만큼만 넣고 "더 보기"로 늘린다.
     @State private var visibleFlatCount = RoutesView.flatPageSize
     private static let flatPageSize = 200
+
+    private var flatRecords: [RideRecord] { pinnedCourses(sort.sorted(store.records)) }
+    private var groups: [RouteGroup] {
+        RouteGrouping.groups(store.records.filter { !$0.isCourseOnly }, radiusMeters: bucketMeters)
+    }
 
     private var importTypes: [UTType] {
         var types: [UTType] = [.commaSeparatedText, .plainText, .xml, .folder]
@@ -207,23 +212,7 @@ struct RoutesView: View {
                     .environmentObject(session)
             }
         }
-        .onAppear { refreshDerivedLists() }
-        .onChange(of: sort) { _, _ in
-            visibleFlatCount = Self.flatPageSize
-            refreshDerivedLists()
-        }
-        .onChange(of: bucketMeters) { _, _ in refreshDerivedLists() }
-        // records 가 실제로 바뀔 때만(= RideStore 자신의 objectWillChange) 다시 계산한다.
-        // willSet 시점 신호라 값이 아직 안 바뀌었을 수 있어 다음 틱으로 미뤄서 읽는다.
-        .onReceive(session.store.objectWillChange) { _ in
-            DispatchQueue.main.async { refreshDerivedLists() }
-        }
-    }
-
-    private func refreshDerivedLists() {
-        cachedFlatRecords = pinnedCourses(sort.sorted(session.store.records))
-        cachedGroups = RouteGrouping.groups(session.store.records.filter { !$0.isCourseOnly },
-                                            radiusMeters: bucketMeters)
+        .onChange(of: sort) { _, _ in visibleFlatCount = Self.flatPageSize }
     }
 
     // 데이터 가져오기/정리 메뉴 (라이딩 기록 첫 페이지)
@@ -342,12 +331,12 @@ struct RoutesView: View {
         }
     }
 
-    // 평면 목록(정렬 적용 — 지도 코스 자료는 항상 맨 위). cachedFlatRecords 는 records 가 실제로
-    // 바뀔 때만(refreshDerivedLists) 갱신 — 매 렌더마다 정렬·필터를 다시 하지 않는다.
+    // 평면 목록(정렬 적용 — 지도 코스 자료는 항상 맨 위). flatRecords 는 store를 직접
+    // 구독하는 계산 프로퍼티 — SwiftUI의 EnvironmentObject 갱신 스케줄링에 맡긴다.
     // 화면엔 visibleFlatCount 만큼만 넣는다 — SwiftUI List가 수천 건을 한 번에 diff하면
     // 메인 스레드가 워치독 허용 시간(10초)을 넘겨 앱이 강제 종료될 수 있다(실제 크래시 리포트로 확인).
     private var flatList: some View {
-        let visible = cachedFlatRecords.prefix(visibleFlatCount)
+        let visible = flatRecords.prefix(visibleFlatCount)
         return List {
             ForEach(visible) { record in
                 NavigationLink {
@@ -360,13 +349,13 @@ struct RoutesView: View {
                 }
             }
             .onDelete { idx in
-                session.store.deleteMany(idx.map { cachedFlatRecords[$0] })
+                session.store.deleteMany(idx.map { flatRecords[$0] })
             }
-            if cachedFlatRecords.count > visibleFlatCount {
+            if flatRecords.count > visibleFlatCount {
                 Button {
                     visibleFlatCount += Self.flatPageSize
                 } label: {
-                    Text("더 보기 (\(cachedFlatRecords.count - visibleFlatCount)건 더)")
+                    Text("더 보기 (\(flatRecords.count - visibleFlatCount)건 더)")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
@@ -403,7 +392,7 @@ struct RoutesView: View {
             } footer: {
                 Text("시작·끝 위치가 이 반경 안이고 거리가 비슷하면 같은 코스로 묶습니다.")
             }
-            ForEach(cachedGroups) { group in
+            ForEach(groups) { group in
                 NavigationLink {
                     RouteGroupView(group: group, sort: sort)
                 } label: {
