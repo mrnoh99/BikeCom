@@ -286,7 +286,7 @@ final class RideSession: ObservableObject {
 
     /// 사용자가 확인 시트에서 선택한 기록만 실제로 삭제한다.
     func confirmDeleteDuplicates(_ records: [RideRecord]) {
-        for r in records { store.delete(r) }
+        store.deleteMany(records)
         refreshDataStats()
         duplicateCandidates = nil
     }

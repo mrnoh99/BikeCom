@@ -327,7 +327,7 @@ struct RoutesView: View {
                 }
             }
             .onDelete { idx in
-                idx.map { records[$0] }.forEach { session.store.delete($0) }
+                session.store.deleteMany(idx.map { records[$0] })
             }
         }
     }
@@ -475,7 +475,7 @@ struct RouteGroupView: View {
                 }
                 .onDelete { idx in
                     let arr = sort.sorted(group.rides)
-                    idx.map { arr[$0] }.forEach { session.store.delete($0) }
+                    session.store.deleteMany(idx.map { arr[$0] })
                 }
             }
         }
