@@ -226,6 +226,18 @@ final class RideStore: ObservableObject {
         save()
     }
 
+    /// 여러 기록을 한 번에 삭제한다. `delete(_:)`를 반복 호출하면 그 수만큼 `records`를
+    /// 따로따로 변이(mutate)하고 매번 `@Published` 변경을 발행하는데, 같은 틱(call stack) 안에서
+    /// 반복되면 SwiftUI가 그 변경을 구독한 화면(Routes 목록 등)을 재진입적으로 다시 그리려 하면서
+    /// 아직 변이 중인 배열을 동시에 읽어 크래시할 수 있다. 단일 변이+단일 발행으로 묶어 피한다.
+    func deleteMany(_ toDelete: [RideRecord]) {
+        guard !toDelete.isEmpty else { return }
+        let ids = Set(toDelete.map(\.id))
+        records.removeAll { ids.contains($0.id) }
+        for id in ids { deleteTrackFile(id) }
+        save()
+    }
+
     // MARK: 트랙 파일 (라이딩별 GPS 트랙을 분리 저장 — 메모리 절약)
 
     /// 트랙 폴더는 iCloud 컨테이너(가능 시)에 두어 파일 단위로 **증분 동기화**된다.

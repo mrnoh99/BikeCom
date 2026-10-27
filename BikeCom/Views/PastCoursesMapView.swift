@@ -158,7 +158,7 @@ struct CourseManagerView: View {
                     CourseManagerRow(record: rec)
                 }
                 .onDelete { idx in
-                    idx.map { courseRecords[$0] }.forEach { session.store.delete($0) }
+                    session.store.deleteMany(idx.map { courseRecords[$0] })
                 }
             } footer: {
                 Text("지도 코스 자료만 표시됩니다(주행 통계 제외). 왼쪽으로 밀어 삭제할 수 있습니다. 추가는 라이딩 기록 상세·루트 목록에서 '지도 코스로 복사', 또는 GPX 가져오기에서 '지도 코스 자료'를 선택하세요.")
