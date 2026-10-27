@@ -239,6 +239,21 @@ enum GMapsConfig {
         return (Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String) ?? ""
     }
     static var hasKey: Bool { !apiKey.isEmpty }
+
+    /// 프로세스 전체에서 마지막으로 SDK에 적용한 키 — 앱 시작 1회 호출과 설정 화면을 여러 번
+    /// 드나들며 호출하는 것이 중복되지 않게 막는다(Google Maps SDK는 provideAPIKey 를 호출할
+    /// 때마다 내부 업로더 인스턴스를 새로 만들어 "Multiple instances of CCTClearcutUploader"
+    /// 경고가 반복 발생한다).
+    private static var appliedKey: String?
+
+    /// `key`가 비어있지 않고 이미 적용된 값과 다를 때만 `GMSServices.provideAPIKey`를 호출한다.
+    static func applyIfNeeded(_ key: String) {
+        guard !key.isEmpty, key != appliedKey else { return }
+        #if canImport(GoogleMaps)
+        GMSServices.provideAPIKey(key)
+        #endif
+        appliedKey = key
+    }
 }
 
 /// 여러 코스 오버레이: 지도 설정에서 고른 제공자(Google/네이버, 키 있을 때) 또는 Apple.
