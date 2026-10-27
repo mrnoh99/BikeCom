@@ -134,6 +134,22 @@ struct RideRecord: Identifiable, Codable {
     }
 }
 
+/// 콜백을 **정확히 한 번만** 실행한다. `readTrack`처럼 "성공" 경로와 "타임아웃" 경로가
+/// 경쟁할 때, 둘 중 먼저 끝난 쪽만 completion을 부르고 나중에 끝난 쪽은 조용히 버린다.
+private final class SingleShotCompletion<T> {
+    private let lock = NSLock()
+    private var fired = false
+    private let action: (T) -> Void
+    init(_ action: @escaping (T) -> Void) { self.action = action }
+    func fire(_ value: T) {
+        lock.lock()
+        let shouldFire = !fired
+        fired = true
+        lock.unlock()
+        if shouldFire { action(value) }
+    }
+}
+
 /// 라이딩 기록 저장소 + 누적 거리 통계.
 /// `rides.json` 을 **iCloud Documents 컨테이너**에 저장해 기기 간 동기화한다.
 /// iCloud 를 못 쓰면 로컬 Documents 로 폴백한다.
@@ -315,9 +331,8 @@ final class RideStore: ObservableObject {
     }
 
     /// 라이딩의 GPS 트랙을 디스크에서 비동기로 로드(상세·내보내기용). 메인 큐로 반환.
-    /// iCloud 전용 파일이면 다운로드가 끝날 때까지 최대 6초(1초 간격 재시도) 기다린다 — 이
-    /// 재시도는 ioQueue 를 붙잡지 않고 메인 큐 타이머로 스케줄되므로, 같은 큐를 쓰는 다른 작업
-    /// (자동 백업의 전체 트랙 재인코딩 등)을 몇 초씩 막는 일이 없다.
+    /// iCloud 전용 파일이면 최대 6회(1초 간격) 재시도하며, 매 시도는 `readTrack`의 자체
+    /// 타임아웃(기본 5초) 안에 반드시 끝난다 — ioQueue 는 더 이상 이 경로에 관여하지 않는다.
     func loadTrack(for record: RideRecord, completion: @escaping ([RideRecord.Coordinate]) -> Void) {
         if !record.track.isEmpty { completion(record.track); return }
         guard record.trackCount > 0 else { completion([]); return }
@@ -326,8 +341,7 @@ final class RideStore: ObservableObject {
 
     private func attemptLoadTrack(_ url: URL, retriesLeft: Int,
                                   completion: @escaping ([RideRecord.Coordinate]) -> Void) {
-        ioQueue.async { [weak self] in
-            let coords = Self.readTrack(url)
+        Self.readTrack(url) { [weak self] coords in
             guard coords.isEmpty, retriesLeft > 0 else {
                 DispatchQueue.main.async { completion(coords) }
                 return
@@ -338,33 +352,58 @@ final class RideStore: ObservableObject {
         }
     }
 
-    /// 동기 트랙 로드(이미 백그라운드 스레드인 내보내기에서 사용).
+    /// 동기 트랙 로드(이미 백그라운드 스레드인 내보내기에서 사용). `readTrack`이 `timeout` 안에
+    /// 반드시 한 번 완료하므로(아래 참고) 영원히 막히지 않는다.
     func loadTrackSync(_ record: RideRecord) -> [RideRecord.Coordinate] {
         if !record.track.isEmpty { return record.track }
         guard record.trackCount > 0 else { return [] }
-        return Self.readTrack(trackFileURL(record.id))
+        return Self.readTrackSync(trackFileURL(record.id))
+    }
+
+    /// `readTrack`(비동기)의 완료를 동기적으로 기다리는 래퍼. 반드시 백그라운드 스레드에서
+    /// 호출할 것 — `readTrack` 자신이 `timeout` 안에 한 번은 completion을 부르므로, 이 대기는
+    /// 길어야 `timeout`초를 넘지 않는다.
+    private static func readTrackSync(_ url: URL, timeout: TimeInterval = 8) -> [RideRecord.Coordinate] {
+        let sema = DispatchSemaphore(value: 0)
+        var result: [RideRecord.Coordinate] = []
+        readTrack(url, timeout: timeout) { coords in
+            result = coords
+            sema.signal()
+        }
+        sema.wait()
+        return result
     }
 
     /// 빠르고 논블로킹: iCloud 전용 파일(로컬에 아직 안 받아짐)이면 다운로드만 요청하고 바로
-    /// 시도한다 — 여기서 기다리지 않는다. (한때 여기서 최대 8초를 블로킹 대기했었는데, 이
-    /// 함수가 `ioQueue`라는 **공유 직렬 큐**에서 호출되는 걸 간과했다. buildFullBackupData가
-    /// 트랙이 비어 있는 모든 기록에 대해 이 함수를 반복 호출하므로, 로컬에 없는 파일이 여러 개면
-    /// N × 8초가 그대로 ioQueue를 막아버려 다른 작업 — 상세 화면의 개별 트랙 로드 포함 — 이
-    /// 전부 그 뒤에 멈춰 선다. "다운로드 완료까지 기다리기"는 호출부(`attemptLoadTrack`)가
-    /// ioQueue를 붙잡지 않는 방식으로 재시도하도록 옮겼다.
-    private static func readTrack(_ url: URL) -> [RideRecord.Coordinate] {
+    /// 시도한다 — 여기서 기다리지 않는다.
+    ///
+    /// `NSFileCoordinator.coordinate(readingItemAt:)` 자체엔 타임아웃이 없다. 기기의 iCloud/
+    /// FileProvider 데몬이 불안정하면 이 호출이 **영영 반환하지 않을 수 있다** — 실기기(iPad
+    /// Pro)에서 "경로 불러오는 중"이 크래시도 없이 끝없이 도는 것으로 확인된 근본 원인이다.
+    /// 그래서 실제 coordinate 호출은 별도의 스로어웨이 글로벌 큐에서 돌리고, `timeout` 안에
+    /// 끝나지 않으면 빈 트랙으로 포기한 뒤 completion을 부른다. 나중에 그 coordinate 호출이
+    /// 뒤늦게 실제로 끝나더라도 `SingleShotCompletion` 덕분에 completion은 정확히 한 번만
+    /// 불린다(두 경로가 동시에 `result`를 건드리는 경쟁 상태가 생기지 않는다).
+    private static func readTrack(_ url: URL, timeout: TimeInterval = 5,
+                                   completion: @escaping ([RideRecord.Coordinate]) -> Void) {
         if !FileManager.default.fileExists(atPath: url.path) {
             try? FileManager.default.startDownloadingUbiquitousItem(at: url)
         }
-        var result: [RideRecord.Coordinate] = []
-        let coordinator = NSFileCoordinator(); var err: NSError?
-        coordinator.coordinate(readingItemAt: url, options: [], error: &err) { u in
-            if let data = try? Data(contentsOf: u),
-               let coords = try? JSONDecoder().decode([RideRecord.Coordinate].self, from: data) {
-                result = coords
+        let once = SingleShotCompletion(completion)
+        DispatchQueue.global(qos: .utility).async {
+            var result: [RideRecord.Coordinate] = []
+            let coordinator = NSFileCoordinator(); var err: NSError?
+            coordinator.coordinate(readingItemAt: url, options: [], error: &err) { u in
+                if let data = try? Data(contentsOf: u),
+                   let coords = try? JSONDecoder().decode([RideRecord.Coordinate].self, from: data) {
+                    result = coords
+                }
             }
+            once.fire(result)
         }
-        return result
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+            once.fire([])
+        }
     }
 
     // MARK: 누적 거리 집계 (records 변경 시 1회 갱신 + 영속화)
@@ -523,7 +562,7 @@ final class RideStore: ObservableObject {
         let full = summaries.map { rec -> RideRecord in
             var r = rec
             if r.track.isEmpty, r.trackCount > 0 {
-                r.track = Self.readTrack(self.trackFileURL(r.id))
+                r.track = Self.readTrackSync(self.trackFileURL(r.id))
             }
             return r
         }
