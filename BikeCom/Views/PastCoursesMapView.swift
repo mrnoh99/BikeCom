@@ -256,6 +256,33 @@ enum GMapsConfig {
     }
 }
 
+/// 유효하지 않은 좌표(NaN 등)를 거르고, 지도 표시에 필요한 수준으로 포인트 수를 줄인다.
+///
+/// 실기기(iPad) 크래시 리포트로 확정한 근본 원인: `GoogleRouteMap.updateUIView`가 긴 라이딩의
+/// 전체 GPS 트랙(수만 개 포인트)을 그대로 `GMSMutablePath`에 쌓고 `line.map = map`을 거치면,
+/// 내부적으로 `GMSPolyline.update() → GMSPolyline.computeZoom() → GMSPath.bounds →
+/// GMSCoordinateBounds(path:)`가 포인트 전체를 다시 순회한다 — 리포트에서 이 호출 하나가 메인
+/// 스레드 CPU 10초 이상을 먹어 워치독(0x8BADF00D)에 의해 강제 종료됐다. "경로 불러오는 중"이
+/// 끝없이 도는 것으로 보였던 증상의 실체가 이것이었다. 화면에 그릴 폴리라인엔 이 정도 포인트면
+/// 충분해서, 지도에 넘기기 전에 균등 간격으로 솎아낸다.
+private func mapDisplayTrack(_ raw: [CLLocationCoordinate2D], maxPoints: Int = 1500) -> [CLLocationCoordinate2D] {
+    let valid = raw.filter(CLLocationCoordinate2DIsValid)
+    guard valid.count > maxPoints else { return valid }
+    let step = Double(valid.count) / Double(maxPoints)
+    var result: [CLLocationCoordinate2D] = []
+    result.reserveCapacity(maxPoints + 1)
+    var i = 0.0
+    while i < Double(valid.count) {
+        result.append(valid[Int(i)])
+        i += step
+    }
+    if let last = valid.last,
+       result.last.map({ $0.latitude != last.latitude || $0.longitude != last.longitude }) ?? true {
+        result.append(last)
+    }
+    return result
+}
+
 /// 여러 코스 오버레이: 지도 설정에서 고른 제공자(Google/네이버, 키 있을 때) 또는 Apple.
 struct PastCoursesMap: View {
     let tracks: [[CLLocationCoordinate2D]]
@@ -329,9 +356,10 @@ struct GoogleRouteMap: UIViewRepresentable {
         map.clear()
         var bounds = GMSCoordinateBounds()
         // GMS는 NaN/범위 밖 좌표가 섞이면 크래시한다 — GPS 글리치·손상된 트랙 파일 등으로
-        // 유효하지 않은 좌표가 들어올 수 있어 반드시 걸러낸다.
+        // 유효하지 않은 좌표가 들어올 수 있어 반드시 걸러낸다. 포인트 수도 줄인다(위 주석 참고:
+        // GMSPolyline/GMSCoordinateBounds가 전체 트랙을 매번 다시 순회하다 워치독에 걸림).
         for (i, rawTrack) in tracks.enumerated() {
-            let track = rawTrack.filter(CLLocationCoordinate2DIsValid)
+            let track = mapDisplayTrack(rawTrack)
             guard track.count > 1 else { continue }
             let path = GMSMutablePath()
             for c in track { path.add(c); bounds = bounds.includingCoordinate(c) }
@@ -366,7 +394,7 @@ struct NaverRouteMap: UIViewRepresentable {
 
         var minLat: Double?, maxLat: Double?, minLng: Double?, maxLng: Double?
         for (i, rawTrack) in tracks.enumerated() {
-            let track = rawTrack.filter(CLLocationCoordinate2DIsValid)
+            let track = mapDisplayTrack(rawTrack)
             guard track.count > 1 else { continue }
             let points = track.map { NMGLatLng(lat: $0.latitude, lng: $0.longitude) }
             if let line = NMFPath(points: points) {
@@ -409,7 +437,9 @@ struct MultiRouteAppleMap: UIViewRepresentable {
     func updateUIView(_ map: MKMapView, context: Context) {
         map.removeOverlays(map.overlays)
         var rect = MKMapRect.null
-        for track in tracks where track.count > 1 {
+        for rawTrack in tracks {
+            let track = mapDisplayTrack(rawTrack)
+            guard track.count > 1 else { continue }
             let line = MKPolyline(coordinates: track, count: track.count)
             map.addOverlay(line)
             rect = rect.union(line.boundingMapRect)
