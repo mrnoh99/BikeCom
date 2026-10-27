@@ -756,7 +756,12 @@ final class RideSession: ObservableObject {
 
         // store 만 상위로 전달(Routes·More 목록 갱신). watch/ble/health 는 각 화면에서
         // @ObservedObject 또는 TimelineView 로 국소 갱신 — 전체 List 재렌더·스크롤 끊김 방지.
+        // .receive(on:) 로 한 틱 미룬다 — store.records 의 willSet 이 objectWillChange 를
+        // "동기적으로" 발행하는데, 이걸 바로 또 동기적으로 재발행하면 SwiftUI가 아직 변이가
+        // 끝나지 않은 배열을 같은 호출 스택 안에서 재진입적으로 읽다가 크래시할 수 있다
+        // (라이딩 기록 목록에서 재현된 initializeWithCopy/swift_arrayInitWithCopy 크래시).
         store.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
