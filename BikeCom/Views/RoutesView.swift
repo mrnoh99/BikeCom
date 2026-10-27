@@ -112,6 +112,13 @@ struct RoutesView: View {
     @State private var exporting = false
     @AppStorage("route.bucketMeters") private var bucketMeters: Double = 250
     @AppStorage(RideStore.lastBackupKey) private var lastBackupAt: Double = 0
+    /// 정렬·코스 묶음(RouteGrouping)은 기록이 많으면(수천 건) 꽤 무거운 계산이다. `session`은
+    /// 심박·속도 등 라이딩 중에도 자주 바뀌는 값들을 함께 발행하는 @EnvironmentObject라서, 이걸
+    /// body 안의 평범한 computed property로 두면 **records 와 무관한** 변경에도 매번 다시
+    /// 계산된다 — 큰 데이터셋에서 메인 스레드가 오래 막혀 워치독에 의해 앱이 종료될 수 있다.
+    /// RideStore 자신의 objectWillChange(= records 가 실제로 바뀔 때만)에만 반응해 캐시한다.
+    @State private var cachedFlatRecords: [RideRecord] = []
+    @State private var cachedGroups: [RouteGroup] = []
 
     private var importTypes: [UTType] {
         var types: [UTType] = [.commaSeparatedText, .plainText, .xml, .folder]
@@ -194,6 +201,20 @@ struct RoutesView: View {
                     .environmentObject(session)
             }
         }
+        .onAppear { refreshDerivedLists() }
+        .onChange(of: sort) { _, _ in refreshDerivedLists() }
+        .onChange(of: bucketMeters) { _, _ in refreshDerivedLists() }
+        // records 가 실제로 바뀔 때만(= RideStore 자신의 objectWillChange) 다시 계산한다.
+        // willSet 시점 신호라 값이 아직 안 바뀌었을 수 있어 다음 틱으로 미뤄서 읽는다.
+        .onReceive(session.store.objectWillChange) { _ in
+            DispatchQueue.main.async { refreshDerivedLists() }
+        }
+    }
+
+    private func refreshDerivedLists() {
+        cachedFlatRecords = pinnedCourses(sort.sorted(session.store.records))
+        cachedGroups = RouteGrouping.groups(session.store.records.filter { !$0.isCourseOnly },
+                                            radiusMeters: bucketMeters)
     }
 
     // 데이터 가져오기/정리 메뉴 (라이딩 기록 첫 페이지)
@@ -312,11 +333,11 @@ struct RoutesView: View {
         }
     }
 
-    // 평면 목록(정렬 적용 — 지도 코스 자료는 항상 맨 위)
+    // 평면 목록(정렬 적용 — 지도 코스 자료는 항상 맨 위). cachedFlatRecords 는 records 가 실제로
+    // 바뀔 때만(refreshDerivedLists) 갱신 — 매 렌더마다 정렬·필터를 다시 하지 않는다.
     private var flatList: some View {
-        let records = pinnedCourses(sort.sorted(session.store.records))
-        return List {
-            ForEach(records) { record in
+        List {
+            ForEach(cachedFlatRecords) { record in
                 NavigationLink {
                     RideDetailView(record: record, unit: session.unit)
                 } label: {
@@ -327,7 +348,7 @@ struct RoutesView: View {
                 }
             }
             .onDelete { idx in
-                session.store.deleteMany(idx.map { records[$0] })
+                session.store.deleteMany(idx.map { cachedFlatRecords[$0] })
             }
         }
     }
@@ -362,7 +383,7 @@ struct RoutesView: View {
             } footer: {
                 Text("시작·끝 위치가 이 반경 안이고 거리가 비슷하면 같은 코스로 묶습니다.")
             }
-            ForEach(RouteGrouping.groups(session.store.records.filter { !$0.isCourseOnly }, radiusMeters: bucketMeters)) { group in
+            ForEach(cachedGroups) { group in
                 NavigationLink {
                     RouteGroupView(group: group, sort: sort)
                 } label: {
