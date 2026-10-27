@@ -446,14 +446,16 @@ final class RideStore: ObservableObject {
                 coordinator.coordinate(writingItemAt: mainURL, options: .forReplacing, error: &err) { u in
                     try? data.write(to: u, options: .atomic)
                 }
-                // 자동 백업은 요약본(가벼움)으로 둔다. 트랙은 Tracks/ 가 iCloud 로 증분
-                // 동기화되어 재설치 시 함께 복원되므로, 저장마다 전체 트랙을 재인코딩하지 않는다.
-                // (사람이 꺼내는 트랙 포함 단일 파일은 makeBackupData 수동 내보내기로 제공)
-                try? data.write(to: localBak, options: .atomic)
+                // 자동 백업은 트랙까지 포함한 전체본(수동 zip 내보내기와 동일 포맷)으로 저장한다 —
+                // Tracks/ 폴더의 iCloud 증분 동기화에만 의존하지 않고, 백업 파일 자체가 자기완결적이
+                // 되도록 한다. 디바운스(0.4초) 덕분에 연속 변경은 1회로 합쳐지지만, 기록이 많으면
+                // 저장할 때마다 전체 트랙을 다시 읽어 인코딩하므로 rides.json 보다 비용이 크다.
+                guard let fullData = self.buildFullBackupData(from: snapshot) else { return }
+                try? fullData.write(to: localBak, options: .atomic)
                 if let cloudBak {
                     let c = NSFileCoordinator(); var e: NSError?
                     c.coordinate(writingItemAt: cloudBak, options: .forReplacing, error: &e) { u in
-                        try? data.write(to: u, options: .atomic)
+                        try? fullData.write(to: u, options: .atomic)
                     }
                 }
                 UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackupKey)
