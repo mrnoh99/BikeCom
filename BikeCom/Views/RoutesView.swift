@@ -119,6 +119,12 @@ struct RoutesView: View {
     /// RideStore 자신의 objectWillChange(= records 가 실제로 바뀔 때만)에만 반응해 캐시한다.
     @State private var cachedFlatRecords: [RideRecord] = []
     @State private var cachedGroups: [RouteGroup] = []
+    /// 실제 크래시 리포트(0x8BADF00D scene-update watchdog, 10초 초과)로 확인된 근본 원인:
+    /// SwiftUI List/ForEach가 전체 기록(수천 건)을 한 번에 diff·배치하는 게 너무 느려서(특히
+    /// 저사양 기기) 메인 스레드 업데이트가 워치독 허용 시간을 넘겨 앱이 강제 종료됐다. 캐싱만으론
+    /// 부족하고, 화면에 실제로 넣는 개수 자체를 제한(페이지네이션)해야 한다.
+    @State private var visibleFlatCount = RoutesView.flatPageSize
+    private static let flatPageSize = 200
 
     private var importTypes: [UTType] {
         var types: [UTType] = [.commaSeparatedText, .plainText, .xml, .folder]
@@ -202,7 +208,10 @@ struct RoutesView: View {
             }
         }
         .onAppear { refreshDerivedLists() }
-        .onChange(of: sort) { _, _ in refreshDerivedLists() }
+        .onChange(of: sort) { _, _ in
+            visibleFlatCount = Self.flatPageSize
+            refreshDerivedLists()
+        }
         .onChange(of: bucketMeters) { _, _ in refreshDerivedLists() }
         // records 가 실제로 바뀔 때만(= RideStore 자신의 objectWillChange) 다시 계산한다.
         // willSet 시점 신호라 값이 아직 안 바뀌었을 수 있어 다음 틱으로 미뤄서 읽는다.
@@ -335,9 +344,12 @@ struct RoutesView: View {
 
     // 평면 목록(정렬 적용 — 지도 코스 자료는 항상 맨 위). cachedFlatRecords 는 records 가 실제로
     // 바뀔 때만(refreshDerivedLists) 갱신 — 매 렌더마다 정렬·필터를 다시 하지 않는다.
+    // 화면엔 visibleFlatCount 만큼만 넣는다 — SwiftUI List가 수천 건을 한 번에 diff하면
+    // 메인 스레드가 워치독 허용 시간(10초)을 넘겨 앱이 강제 종료될 수 있다(실제 크래시 리포트로 확인).
     private var flatList: some View {
-        List {
-            ForEach(cachedFlatRecords) { record in
+        let visible = cachedFlatRecords.prefix(visibleFlatCount)
+        return List {
+            ForEach(visible) { record in
                 NavigationLink {
                     RideDetailView(record: record, unit: session.unit)
                 } label: {
@@ -349,6 +361,14 @@ struct RoutesView: View {
             }
             .onDelete { idx in
                 session.store.deleteMany(idx.map { cachedFlatRecords[$0] })
+            }
+            if cachedFlatRecords.count > visibleFlatCount {
+                Button {
+                    visibleFlatCount += Self.flatPageSize
+                } label: {
+                    Text("더 보기 (\(cachedFlatRecords.count - visibleFlatCount)건 더)")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
         }
     }
@@ -446,6 +466,11 @@ struct RouteGroupView: View {
     let group: RouteGroup
     let sort: RideSort
     @State private var metric: TrendMetric = .speed
+    // flatList 와 같은 이유(큰 List를 한 번에 diff하면 워치독 강제 종료 위험) — 자주 탄 코스는
+    // 라이딩 수가 수백 건에 달할 수 있어 여기도 캐시+페이지네이션 적용.
+    @State private var cachedSorted: [RideRecord] = []
+    @State private var visibleCount = RouteGroupView.pageSize
+    private static let pageSize = 200
 
     private var chrono: [RideRecord] { group.rides.sorted { $0.startedAt < $1.startedAt } }
 
@@ -474,7 +499,7 @@ struct RouteGroupView: View {
             }
 
             Section("라이딩") {
-                ForEach(sort.sorted(group.rides)) { record in
+                ForEach(cachedSorted.prefix(visibleCount)) { record in
                     NavigationLink {
                         RideDetailView(record: record, unit: session.unit)
                     } label: {
@@ -495,11 +520,19 @@ struct RouteGroupView: View {
                     }
                 }
                 .onDelete { idx in
-                    let arr = sort.sorted(group.rides)
-                    session.store.deleteMany(idx.map { arr[$0] })
+                    session.store.deleteMany(idx.map { cachedSorted[$0] })
+                }
+                if cachedSorted.count > visibleCount {
+                    Button {
+                        visibleCount += Self.pageSize
+                    } label: {
+                        Text("더 보기 (\(cachedSorted.count - visibleCount)건 더)")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
             }
         }
+        .onAppear { cachedSorted = sort.sorted(group.rides) }
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
     }
