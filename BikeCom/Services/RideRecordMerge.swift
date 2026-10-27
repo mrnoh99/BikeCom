@@ -33,6 +33,17 @@ enum RideRecordMerge {
         return a.totalElapsed > 0 && b.totalElapsed > 0 &&
                abs(a.totalElapsed - b.totalElapsed) <= 120
     }
+
+    /// 두 기록의 시간 구간이 조금이라도 겹치는지(`isDuplicate`보다 느슨한 기준).
+    /// Health 기록이 이미 다른 소스(GPX·앱 등) 기록에 부분적으로라도 포함돼 있는지
+    /// 확인하는 통합 정리용 — 시작·지속시간이 근접하지 않아도 구간이 겹치면 true.
+    static func timeRangesOverlap(_ a: RideRecord, _ b: RideRecord) -> Bool {
+        let aLen = max(a.totalElapsed, a.duration, 60)
+        let bLen = max(b.totalElapsed, b.duration, 60)
+        let aEnd = a.startedAt.addingTimeInterval(aLen)
+        let bEnd = b.startedAt.addingTimeInterval(bLen)
+        return a.startedAt < bEnd && b.startedAt < aEnd
+    }
 }
 
 /// Cyclemeter(JSON 기록)와 Apple 건강 워크아웃을 합쳐 **중복 없이** 총 라이딩 시간을 구한다.
