@@ -229,5 +229,11 @@ BikeComWatch/                  # 애플워치 앱
   찾아 `DuplicateReviewSheet` 확인 화면을 띄운다. 기본 선택은 Health 겹침 전체 + 그룹별 GPS 포인트가
   가장 많은 기록만 보존하고 나머지 체크 — 사용자가 체크를 조정한 뒤 "삭제" 버튼을 눌러야 실제 삭제된다
   (`confirmDeleteDuplicates`, 자동 삭제 없음).
+- **자동 백업**: 기록이 바뀔 때마다(0.4초 디바운스) `rides.json`(요약본, 앱 자체 빠른 로드용)과는
+  별도로 `BikeCom-Backup.json`을 로컬 Documents + iCloud Documents 컨테이너에 함께 저장한다.
+  이 백업 파일은 **트랙까지 포함한 전체본**(수동 zip 내보내기와 동일 포맷, `buildFullBackupData`)이라
+  `Tracks/` 폴더의 iCloud 증분 동기화에만 의존하지 않고 그 자체로 자기완결적이다. 다만 기록이 많으면
+  저장할 때마다 전체 트랙을 디스크에서 다시 읽어 인코딩하므로(디바운스로 연속 변경은 1회로 합쳐지긴
+  함) `rides.json` 저장보다 비용이 크다.
 - 앱 아이콘 이미지 미포함(placeholder, 폰·워치 공통).
 - `startWatchApp(toHandle:)` 는 워치 앱이 설치되어 있어야 동작. 워치에서 직접 **시작** 버튼으로도 측정 가능.
