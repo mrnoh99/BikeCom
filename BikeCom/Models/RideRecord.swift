@@ -210,11 +210,36 @@ final class RideStore: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.refreshRecords()
-                // 구버전(파일 기반 rides.json + Tracks/) 데이터를 1회 이전 — 기기마다 한 번만
-                // 실행되며, 이미 Core Data에 있는 기록은 같은 id로 덮어써질 뿐 중복되지 않는다.
-                LegacyRideImporter.importIfNeeded(into: self)
+                self.importLegacyAfterInitialCloudKitSync()
             }
         }
+    }
+
+    /// `LegacyRideImporter`는 기기의 옛 로컬 파일(`rides.json`/`Tracks/`)에 있는 걸 무조건
+    /// 다시 채워 넣는다 — 그 파일은 "이 라이딩이 다른 기기에서 그 사이 지워졌는지"를 전혀 모른다.
+    /// 그래서 이 기기가 CloudKit에서 현재 상태(= 이미 지워진 건 빠진 상태)를 받기 **전에**
+    /// 이전을 실행하면, 다른 기기에서 막 지운 기록이 옛 로컬 파일 때문에 되살아날 수 있다
+    /// (실제로 재현됨: 아이패드에서 지운 기록이 새로 설치한 아이폰에서 되살아남).
+    ///
+    /// 완벽히 막을 방법은 없다(로컬 파일엔 "삭제됨" 표시가 아예 없어서, Core Data가 그 기록을
+    /// 아직 안 받은 건지 영영 지워진 건지 구분 불가) — 대신 첫 CloudKit 변경 알림이 오거나
+    /// 최대 8초를 기다려 CloudKit이 현재 상태를 받아올 시간을 벌어서 위험을 줄인다. 어차피
+    /// 이 이전은 기기마다 딱 한 번만 실행되므로, 이후로는 이 레이스 자체가 없어진다.
+    private func importLegacyAfterInitialCloudKitSync() {
+        var started = false
+        var observer: NSObjectProtocol?
+        let start: () -> Void = { [weak self] in
+            guard !started else { return }
+            started = true
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            guard let self else { return }
+            self.refreshRecords()
+            LegacyRideImporter.importIfNeeded(into: self)
+        }
+        observer = NotificationCenter.default.addObserver(
+            forName: .NSPersistentStoreRemoteChange, object: container.persistentStoreCoordinator,
+            queue: .main) { _ in start() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { start() }
     }
 
     /// 다른 기기의 변경이 CloudKit을 통해 들어오면(NSPersistentCloudKitContainer가 알아서 병합)
