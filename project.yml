@@ -119,6 +119,9 @@ targets:
           - bluetooth-central
           # 이어버즈 심박(HealthKit 워크아웃 세션) 수신 중 화면이 꺼져도 세션 유지.
           - workout-processing
+          # CloudKit이 다른 기기의 변경을 silent push로 알려 백그라운드에서도 바로
+          # 동기화(NSPersistentCloudKitContainer)하게 한다.
+          - remote-notification
         # 라이딩 백업 파일을 Files 앱에서 열람·복사 가능하게(재설치 대비).
         # Info.plist 가 xcodegen 으로 재생성돼도 유지되도록 여기에도 둔다.
         UIFileSharingEnabled: true

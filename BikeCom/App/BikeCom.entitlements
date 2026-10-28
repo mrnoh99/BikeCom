@@ -21,5 +21,9 @@
 		<!-- CloudKit (Core Data + NSPersistentCloudKitContainer 레코드 동기화) -->
 		<string>CloudKit</string>
 	</array>
+	<!-- CloudKit 자동 동기화용 원격(silent) 푸시 수신. Xcode가 배포(archive) 시 이 값을
+	     production으로 자동으로 바꿔준다 — 개발 빌드에선 development로 둔다. -->
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>

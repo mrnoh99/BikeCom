@@ -3,6 +3,8 @@ import SwiftUI
 /// 앱 진입점. 라이딩 세션(센서·GPS·통계)을 전역 상태로 주입한다.
 @main
 struct BikeComApp: App {
+    // CloudKit silent push(백그라운드 즉시 동기화) 수신 등록용. 자세한 건 AppDelegate.swift 참고.
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var session = RideSession()
 
     init() {
