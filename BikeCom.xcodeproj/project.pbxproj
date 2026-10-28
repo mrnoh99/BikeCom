@@ -57,6 +57,7 @@
 		C7ED2BA5133EFD1719668EF1 /* BikeComPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 093CC8089B3164FD0B0F5F4B /* BikeComPersistence.swift */; };
 		D0C0531F20AD8ABD8364872A /* RideSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7563F57B06AEE1CECCF2E9FE /* RideSettingsSheet.swift */; };
 		D2ED6DCBD9E2801FCFC2F9F1 /* BikeComWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3B52AB80D4B405D89565A6 /* BikeComWatchApp.swift */; };
+		D341D2084D1AD5BD06C58619 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59005B60A24E849C1CB14A0D /* AppDelegate.swift */; };
 		D3B1F0DE7AAAB87155F9BFC8 /* SeedRides.json.gz in Resources */ = {isa = PBXBuildFile; fileRef = 1AB58F9494B9356B86068074 /* SeedRides.json.gz */; };
 		E125258DA84FDE88158600FC /* LegacyRideImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB0AFDE5E9FC9355595D4742 /* LegacyRideImporter.swift */; };
 		E14C0A8DB36D538EEDA28387 /* HealthWorkoutImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1EDD52253832C1C27244F7C /* HealthWorkoutImporter.swift */; };
@@ -133,6 +134,7 @@
 		512D1C439F8956E8A554E368 /* HealthKitHeartRateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitHeartRateManager.swift; sourceTree = "<group>"; };
 		51DE4469262FA175D3B74892 /* RideIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideIntents.swift; sourceTree = "<group>"; };
 		52909DB223B0B2DEEB9711C5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		59005B60A24E849C1CB14A0D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		5C7F9A7BA4CE9C313B77FB20 /* BikeCom.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = BikeCom.xcdatamodel; sourceTree = "<group>"; };
 		5D73E76510EAF4BEDAEC8A2B /* WheelPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WheelPresets.swift; sourceTree = "<group>"; };
 		60E8780BF575B42866708ACC /* BLEHeartRateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEHeartRateManager.swift; sourceTree = "<group>"; };
@@ -275,6 +277,7 @@
 		585FD7E76A276E75F8E3A0C1 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				59005B60A24E849C1CB14A0D /* AppDelegate.swift */,
 				114BE9A32FE414571922B90B /* BikeCom.entitlements */,
 				F868194B765D827FFA8A3EA5 /* BikeComApp.swift */,
 				52909DB223B0B2DEEB9711C5 /* Info.plist */,
@@ -564,6 +567,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D341D2084D1AD5BD06C58619 /* AppDelegate.swift in Sources */,
 				718AC728638CB53BD1753670 /* BLECSCManager.swift in Sources */,
 				5CBB516D9CE1B94B2AAE3AF8 /* BLEHeartRateManager.swift in Sources */,
 				B7CCBFF2E8F891A99018F2F8 /* BackupZip.swift in Sources */,
