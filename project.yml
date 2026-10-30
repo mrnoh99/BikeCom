@@ -1,5 +1,10 @@
 # XcodeGen 프로젝트 정의. 이 파일이 바뀌면 .github/workflows/xcodegen.yml 이
 # macOS 러너에서 `xcodegen generate` 를 실행해 BikeCom.xcodeproj 를 자동 재생성·커밋한다.
+#
+# 저장소를 Core Data(BikeCom/Models/BikeCom.xcdatamodeld) + NSPersistentCloudKitContainer로
+# 전환하면서 새 소스 파일(CDRide.swift·BikeComPersistence.swift·LegacyRideImporter.swift)이
+# 추가됐다 — `sources: path: BikeCom`이 전체를 glob하므로 project.pbxproj엔 이 커밋에서
+# 손대지 않고, 이 파일을 건드려 위 워크플로가 자동으로 재생성·커밋하게 한다.
 name: BikeCom
 options:
   bundleIdPrefix: com.jaisungnoh.bikecom
@@ -114,6 +119,9 @@ targets:
           - bluetooth-central
           # 이어버즈 심박(HealthKit 워크아웃 세션) 수신 중 화면이 꺼져도 세션 유지.
           - workout-processing
+          # CloudKit이 다른 기기의 변경을 silent push로 알려 백그라운드에서도 바로
+          # 동기화(NSPersistentCloudKitContainer)하게 한다.
+          - remote-notification
         # 라이딩 백업 파일을 Files 앱에서 열람·복사 가능하게(재설치 대비).
         # Info.plist 가 xcodegen 으로 재생성돼도 유지되도록 여기에도 둔다.
         UIFileSharingEnabled: true

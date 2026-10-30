@@ -17,6 +17,7 @@
 		167A0BCA80B999FD356FE960 /* MoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CCC95051CFA41EEBECEBDC8 /* MoreView.swift */; };
 		1985189C324E4F4E784E4611 /* WheelPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D73E76510EAF4BEDAEC8A2B /* WheelPresets.swift */; };
 		262C6FA5AF1BFE34609B0A56 /* SensorSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2284CCE1E60E2F4B051CC192 /* SensorSettingsView.swift */; };
+		2F3C18AB86E30A6AC461FE5C /* BikeCom.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = BE001DDAABCAFEB02984EA6D /* BikeCom.xcdatamodeld */; };
 		362514342630FB60BDAC3AA0 /* BikeComApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F868194B765D827FFA8A3EA5 /* BikeComApp.swift */; };
 		3B15E15EF771902BFE2D72C9 /* CalendarLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 772EE0BC899036E94E734D23 /* CalendarLogger.swift */; };
 		41850672E9DB661BE75E6496 /* DeviceLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E302911D66323362236F1D /* DeviceLayout.swift */; };
@@ -53,12 +54,16 @@
 		B2FC00CD72B093D6A7B94C19 /* RideUIComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118813BCCC09120CB3B42175 /* RideUIComponents.swift */; };
 		B7CCBFF2E8F891A99018F2F8 /* BackupZip.swift in Sources */ = {isa = PBXBuildFile; fileRef = B916C1F0187BEEA9965FB42F /* BackupZip.swift */; };
 		C12797101424796B7B255E41 /* BikeComWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 32F191682EFC736D03287B94 /* BikeComWatchWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C7ED2BA5133EFD1719668EF1 /* BikeComPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 093CC8089B3164FD0B0F5F4B /* BikeComPersistence.swift */; };
 		D0C0531F20AD8ABD8364872A /* RideSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7563F57B06AEE1CECCF2E9FE /* RideSettingsSheet.swift */; };
 		D2ED6DCBD9E2801FCFC2F9F1 /* BikeComWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3B52AB80D4B405D89565A6 /* BikeComWatchApp.swift */; };
+		D341D2084D1AD5BD06C58619 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59005B60A24E849C1CB14A0D /* AppDelegate.swift */; };
 		D3B1F0DE7AAAB87155F9BFC8 /* SeedRides.json.gz in Resources */ = {isa = PBXBuildFile; fileRef = 1AB58F9494B9356B86068074 /* SeedRides.json.gz */; };
+		E125258DA84FDE88158600FC /* LegacyRideImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB0AFDE5E9FC9355595D4742 /* LegacyRideImporter.swift */; };
 		E14C0A8DB36D538EEDA28387 /* HealthWorkoutImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1EDD52253832C1C27244F7C /* HealthWorkoutImporter.swift */; };
 		F30C957150FB1ED37896EF20 /* HealthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC89EF68FC1C44C1FB34847 /* HealthStore.swift */; };
 		F535C31EE0398D66A6C72B9D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E531AC83AA4617460DC2E4A9 /* Theme.swift */; };
+		F731CD5766B503E5EC8DDADA /* CDRide.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53DAF2C5AC90196FF92ECE7 /* CDRide.swift */; };
 		FA35427F9CD05CAE07C8CBE8 /* GPXExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68F4A6D994BA94D80C9B2CE3 /* GPXExporter.swift */; };
 		FE7906C9D8B3EF0AD407B176 /* RideRecordMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6533B0D069EA3631A29D8390 /* RideRecordMerge.swift */; };
 /* End PBXBuildFile section */
@@ -106,6 +111,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		093CC8089B3164FD0B0F5F4B /* BikeComPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeComPersistence.swift; sourceTree = "<group>"; };
 		114BE9A32FE414571922B90B /* BikeCom.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BikeCom.entitlements; sourceTree = "<group>"; };
 		118813BCCC09120CB3B42175 /* RideUIComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideUIComponents.swift; sourceTree = "<group>"; };
 		1AB58F9494B9356B86068074 /* SeedRides.json.gz */ = {isa = PBXFileReference; lastKnownFileType = archive.gzip; path = SeedRides.json.gz; sourceTree = "<group>"; };
@@ -128,6 +134,8 @@
 		512D1C439F8956E8A554E368 /* HealthKitHeartRateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitHeartRateManager.swift; sourceTree = "<group>"; };
 		51DE4469262FA175D3B74892 /* RideIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideIntents.swift; sourceTree = "<group>"; };
 		52909DB223B0B2DEEB9711C5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		59005B60A24E849C1CB14A0D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		5C7F9A7BA4CE9C313B77FB20 /* BikeCom.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = BikeCom.xcdatamodel; sourceTree = "<group>"; };
 		5D73E76510EAF4BEDAEC8A2B /* WheelPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WheelPresets.swift; sourceTree = "<group>"; };
 		60E8780BF575B42866708ACC /* BLEHeartRateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEHeartRateManager.swift; sourceTree = "<group>"; };
 		611ECA4FBCFFE10D1468C8EA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -154,7 +162,9 @@
 		D9E5143BAE1DBDFD24373B04 /* BikeComWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BikeComWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4B24E4025AC97DAEDAB6F1C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E531AC83AA4617460DC2E4A9 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		E53DAF2C5AC90196FF92ECE7 /* CDRide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDRide.swift; sourceTree = "<group>"; };
 		E692E3AC1FA05C80F5824B60 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		EB0AFDE5E9FC9355595D4742 /* LegacyRideImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyRideImporter.swift; sourceTree = "<group>"; };
 		EB9112B0F728B86AE663F81A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F1EDD52253832C1C27244F7C /* HealthWorkoutImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthWorkoutImporter.swift; sourceTree = "<group>"; };
 		F63998CF67362FC03E1B327C /* WCPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WCPayload.swift; sourceTree = "<group>"; };
@@ -267,6 +277,7 @@
 		585FD7E76A276E75F8E3A0C1 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				59005B60A24E849C1CB14A0D /* AppDelegate.swift */,
 				114BE9A32FE414571922B90B /* BikeCom.entitlements */,
 				F868194B765D827FFA8A3EA5 /* BikeComApp.swift */,
 				52909DB223B0B2DEEB9711C5 /* Info.plist */,
@@ -319,8 +330,12 @@
 		A20806B1F08CBC971BF91BB8 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				093CC8089B3164FD0B0F5F4B /* BikeComPersistence.swift */,
+				E53DAF2C5AC90196FF92ECE7 /* CDRide.swift */,
+				EB0AFDE5E9FC9355595D4742 /* LegacyRideImporter.swift */,
 				40712A3D57D2456D71FCB8ED /* RideRecord.swift */,
 				D70896E9077F4C40F0EC1CE7 /* Units.swift */,
+				BE001DDAABCAFEB02984EA6D /* BikeCom.xcdatamodeld */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -552,10 +567,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D341D2084D1AD5BD06C58619 /* AppDelegate.swift in Sources */,
 				718AC728638CB53BD1753670 /* BLECSCManager.swift in Sources */,
 				5CBB516D9CE1B94B2AAE3AF8 /* BLEHeartRateManager.swift in Sources */,
 				B7CCBFF2E8F891A99018F2F8 /* BackupZip.swift in Sources */,
+				2F3C18AB86E30A6AC461FE5C /* BikeCom.xcdatamodeld in Sources */,
 				362514342630FB60BDAC3AA0 /* BikeComApp.swift in Sources */,
+				C7ED2BA5133EFD1719668EF1 /* BikeComPersistence.swift in Sources */,
+				F731CD5766B503E5EC8DDADA /* CDRide.swift in Sources */,
 				00EFEA2588710D09FB211D2A /* CSVImporter.swift in Sources */,
 				3B15E15EF771902BFE2D72C9 /* CalendarLogger.swift in Sources */,
 				734A75B9338083A35E5096D9 /* ContentView.swift in Sources */,
@@ -567,6 +586,7 @@
 				F30C957150FB1ED37896EF20 /* HealthStore.swift in Sources */,
 				E14C0A8DB36D538EEDA28387 /* HealthWorkoutImporter.swift in Sources */,
 				055EA70E8661A067FCF59E3B /* HeartRateBroadcaster.swift in Sources */,
+				E125258DA84FDE88158600FC /* LegacyRideImporter.swift in Sources */,
 				A5B52D04C34F1D4BC1E44AD0 /* LocationManager.swift in Sources */,
 				8720689EE0E49F6D0F2A33D8 /* MapTabView.swift in Sources */,
 				7F4FE873BD90516A1D6C1DA8 /* MetricCell.swift in Sources */,
@@ -933,6 +953,19 @@
 			productName = NMapsMap;
 		};
 /* End XCSwiftPackageProductDependency section */
+
+/* Begin XCVersionGroup section */
+		BE001DDAABCAFEB02984EA6D /* BikeCom.xcdatamodeld */ = {
+			isa = XCVersionGroup;
+			children = (
+				5C7F9A7BA4CE9C313B77FB20 /* BikeCom.xcdatamodel */,
+			);
+			currentVersion = 5C7F9A7BA4CE9C313B77FB20 /* BikeCom.xcdatamodel */;
+			path = BikeCom.xcdatamodeld;
+			sourceTree = "<group>";
+			versionGroupType = wrapper.xcdatamodel;
+		};
+/* End XCVersionGroup section */
 	};
 	rootObject = E38DD06057864F125D6FA8D2 /* Project object */;
 }

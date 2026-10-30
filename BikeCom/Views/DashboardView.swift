@@ -35,7 +35,7 @@ struct DashboardView: View {
         .navigationDestination(item: $dest) { d in
             switch d {
             case .map: MapTabView()
-            case .routes: RoutesView()
+            case .routes: RoutesView().environmentObject(session.store)
             case .sensor: SensorSettingsView()
             case .extras: SettingsExtrasView()
             case .devices: DevicesView()
