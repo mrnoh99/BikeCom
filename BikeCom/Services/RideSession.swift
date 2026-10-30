@@ -245,9 +245,13 @@ final class RideSession: ObservableObject {
     struct DuplicateCandidates {
         /// 다른 소스(GPX·앱 등) 기록과 시간이 겹치는 Health 기록 — 이미 포함돼 있어 삭제 권장(기본 전체 선택).
         var overlappingHealth: [RideRecord] = []
-        /// 같은 코스(GPS 시작/끝 + 거리)·같은 날짜에 2건 이상인 중복 후보 그룹.
+        /// 시작 시각·거리·시간이 거의 같아 GPS 유무와 무관하게 사실상 같은 라이딩으로 보이는 중복 그룹
+        /// (재설치 후 CloudKit 동기화와 레거시 백업 재가져오기가 같은 라이딩을 서로 다른 id로 둘 다
+        /// 들여온 경우 등). 그룹당 GPS 포인트가 가장 많은 기록만 남기고 나머지가 기본 선택된다.
+        var exactDuplicateGroups: [[RideRecord]] = []
+        /// 같은 코스(GPS 시작/끝 + 거리)·같은 날짜에 2건 이상인 중복 후보 그룹(위에서 안 잡힌 느슨한 중복).
         var sameDayCourseGroups: [[RideRecord]] = []
-        var isEmpty: Bool { overlappingHealth.isEmpty && sameDayCourseGroups.isEmpty }
+        var isEmpty: Bool { overlappingHealth.isEmpty && exactDuplicateGroups.isEmpty && sameDayCourseGroups.isEmpty }
     }
 
     /// ⚙️ → 기록 통합 정리 이후(또는 단독으로) 호출 — 삭제 후보를 찾아 `duplicateCandidates` 에 채운다.
@@ -261,11 +265,33 @@ final class RideSession: ObservableObject {
         let overlappingHealth = healthRecs.filter { h in
             others.contains { RideRecordMerge.timeRangesOverlap(h, $0) }
         }
+        let overlappingHealthIDs = Set(overlappingHealth.map(\.id))
 
-        // 2. 같은 코스(GPS 시작/끝 + 거리 버킷)로 묶은 뒤, 그 안에서 같은 날짜에 2건 이상이면 중복 후보.
+        // 2. 시작 시각(분 단위)·거리·시간이 거의 같은 기록끼리 묶는다 — GPS 좌표가 없어도(요약에
+        //    startCoord/endCoord 가 비어 있어도) 잡히므로, 재설치 후 같은 라이딩이 서로 다른 id로
+        //    두 번 들어온 "거의 전부 중복" 같은 상황에 특히 유효하다.
+        func fingerprint(_ r: RideRecord) -> String {
+            let minuteBucket = Int((r.startedAt.timeIntervalSinceReferenceDate / 60).rounded())
+            let distBucket = Int((r.distanceMeters / 20).rounded())      // 20m 단위로 버킷팅
+            let durBucket = Int((r.duration / 15).rounded())             // 15초 단위로 버킷팅
+            return "\(minuteBucket)-\(distBucket)-\(durBucket)"
+        }
+        var byFingerprint: [String: [RideRecord]] = [:]
+        for r in records where !overlappingHealthIDs.contains(r.id) {
+            byFingerprint[fingerprint(r), default: []].append(r)
+        }
+        let exactDuplicateGroups = byFingerprint.values
+            .filter { $0.count > 1 }
+            .map { $0.sorted { $0.startedAt < $1.startedAt } }
+            .sorted { ($0.first?.startedAt ?? .distantPast) > ($1.first?.startedAt ?? .distantPast) }
+        let exactDupIDs = Set(exactDuplicateGroups.flatMap { $0 }.map(\.id))
+
+        // 3. 같은 코스(GPS 시작/끝 + 거리 버킷)로 묶은 뒤, 그 안에서 같은 날짜에 2건 이상이면 중복 후보
+        //    (위 두 단계에서 안 잡힌, 시간은 다르지만 코스가 같은 느슨한 중복).
         let cal = Calendar.current
         var dupGroups: [[RideRecord]] = []
-        for group in RouteGrouping.groups(others, radiusMeters: 250) where group.id != "no-gps" {
+        let remaining = others.filter { !overlappingHealthIDs.contains($0.id) && !exactDupIDs.contains($0.id) }
+        for group in RouteGrouping.groups(remaining, radiusMeters: 250) where group.id != "no-gps" {
             var byDay: [Date: [RideRecord]] = [:]
             for r in group.rides {
                 byDay[cal.startOfDay(for: r.startedAt), default: []].append(r)
@@ -276,7 +302,9 @@ final class RideSession: ObservableObject {
         }
         dupGroups.sort { ($0.first?.startedAt ?? .distantPast) > ($1.first?.startedAt ?? .distantPast) }
 
-        let candidates = DuplicateCandidates(overlappingHealth: overlappingHealth, sameDayCourseGroups: dupGroups)
+        let candidates = DuplicateCandidates(overlappingHealth: overlappingHealth,
+                                              exactDuplicateGroups: exactDuplicateGroups,
+                                              sameDayCourseGroups: dupGroups)
         guard !candidates.isEmpty else {
             importStatus = "중복 기록 후보가 없습니다"
             return
