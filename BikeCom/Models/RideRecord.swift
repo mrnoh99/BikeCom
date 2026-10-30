@@ -253,10 +253,23 @@ final class RideStore: ObservableObject {
     /// 다른 기기의 변경이 CloudKit을 통해 들어오면(NSPersistentCloudKitContainer가 알아서 병합)
     /// 알려준다 — 화면에 반영하기 위해 다시 읽기만 하면 된다(병합 자체는 이미 끝난 뒤).
     @objc private func storeRemoteChange() {
-        DispatchQueue.main.async { [weak self] in self?.refreshRecords() }
+        DispatchQueue.main.async { [weak self] in
+            self?.refreshRecords()
+            // 드물게 이 알림 시점에 메인 컨텍스트 병합이 아직 안 끝나 있어도(관찰됨: 앱을 켜둔
+            // 채로는 최신 기록이 한동안 안 보이다가, 완전히 종료 후 재실행하면 바로 보였다)
+            // 한 번 더 뒤늦게 재확인해서 그 틈을 메운다.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self?.refreshRecords() }
+        }
     }
 
     private func refreshRecords() {
+        // CloudKit이 백그라운드 컨텍스트로 가져온 변경을 viewContext가 병합했다고
+        // (automaticallyMergesChangesFromParent) 반드시 이 fetch 시점까지 다 반영했다는
+        // 보장은 없다 — 실기기에서 "앱을 켜둔 채로는 가끔 최신 기록이 안 보이다가, 완전히
+        // 종료했다 다시 열면 바로 보인다"는 게 재현됐다(= 새 컨테이너로 다시 로드할 때만
+        // 확실히 반영됨). refreshAllObjects()로 이미 등록된 객체의 캐시를 비워 다음 fetch가
+        // 퍼시스턴트 스토어 코디네이터에서 다시 읽어오도록 강제한다.
+        viewContext.refreshAllObjects()
         let req = CDRide.fetchRequest()
         req.sortDescriptors = [NSSortDescriptor(key: "startedAt", ascending: false)]
         guard let rows = try? viewContext.fetch(req) else { return }
