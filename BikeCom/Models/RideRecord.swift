@@ -159,6 +159,14 @@ final class RideStore: ObservableObject {
     /// 사용자가 직접 누른 "백업 zip 내보내기"에만 해당한다.
     @Published private(set) var lastBackupFailed = false
 
+    /// 가장 최근 add/update/delete 저장이 실패했는지. 실패해도 `records`(화면)는 그 틱까지는
+    /// 정상으로 보일 수 있다 — Core Data는 저장 실패와 무관하게 컨텍스트의 미저장 변경을
+    /// 그대로 들고 있어서, 다음 fetch가 같은 컨텍스트에서 일어나는 한 화면엔 추가한 게 그대로
+    /// 보인다. 문제는 앱을 껐다 켜면(퍼시스턴트 스토어에서 새로 읽음) 그 기록이 사라진
+    /// 것처럼 보인다는 것 — 실제로 디스크에 저장된 적이 없기 때문이다. 이 플래그를 세워서
+    /// 그 순간 바로 알 수 있게 한다(예전엔 print()만 해서 콘솔을 안 보면 알 길이 없었다).
+    @Published private(set) var lastSaveFailed = false
+
     // MARK: 누적 거리 캐시 (오도미터 방식)
     // 렌더마다 records 전체를 합산하지 않도록, 변경 시에만 1회 갱신해 캐시한다.
     // 월별 버킷(year*100+month → m)을 들고 있으면 이번 달·올해·전체를 즉시 계산할 수 있고,
@@ -308,10 +316,14 @@ final class RideStore: ObservableObject {
         guard viewContext.hasChanges else { return }
         do {
             try viewContext.save()
+            lastSaveFailed = false
         } catch {
-            // Core Data 저장 실패는 드물지만(디스크 공간 등), 크래시 대신 로그만 남긴다 —
-            // 다음 변경 때 다시 저장을 시도하면 되고, CloudKit 동기화는 그와 무관하게 계속된다.
+            // Core Data 저장 실패는 드물지만(디스크 공간, CloudKit이 거부하는 값 등), 크래시
+            // 대신 로그 + 플래그로 남긴다. 저장이 실패해도 방금 추가/수정한 내용은 이 컨텍스트
+            // 안에 미저장 변경으로 남아 있어서 화면(records)엔 당장 정상으로 보일 수 있다 —
+            // 앱을 재시작하면(디스크에서 다시 읽으므로) 저장 안 된 내용은 사라진다.
             print("RideStore Core Data 저장 실패: \(error)")
+            lastSaveFailed = true
         }
     }
 
@@ -362,11 +374,39 @@ final class RideStore: ObservableObject {
         return r
     }
 
+    /// NaN/Infinity를 0으로 바꾼다. GPS 신호 불량(터널·지하철 환승 등 "출근" 라이딩에서
+    /// 특히 흔함) 때는 거리/속도 계산이 0으로 나누거나 비정상 값이 섞일 수 있는데, 이런 값을
+    /// 그대로 두면 `JSONEncoder`가 던지거나(트랙 인코딩 실패) CloudKit이 그 레코드 전체를
+    /// 거부할 수 있다(CloudKit은 NaN/Infinity 필드를 아예 받지 않는다) — 저장은 됐는데 다른
+    /// 기기로 동기화가 안 되거나, 최악의 경우 저장 자체가 조용히 실패해 기록이 통째로
+    /// 사라지는 것처럼 보일 수 있다.
+    private static func finite(_ d: Double) -> Double { d.isFinite ? d : 0 }
+
+    /// 트랙에서 위경도가 유효하지 않은(NaN 등) 포인트를 제거하고, 나머지 필드의 비정상 값은
+    /// 0/nil로 정리한다. 이렇게 해야 트랙 전체를 JSON으로 인코딩할 때 실패하지 않는다.
+    private static func sanitized(_ track: [RideRecord.Coordinate]) -> [RideRecord.Coordinate] {
+        track.compactMap { c in
+            guard c.lat.isFinite, c.lon.isFinite, CLLocationCoordinate2DIsValid(c.clCoordinate) else { return nil }
+            var c = c
+            if let e = c.ele, !e.isFinite { c.ele = nil }
+            if let s = c.speed, !s.isFinite { c.speed = nil }
+            return c
+        }
+    }
+
     /// `id`가 같은 행을 찾아 갱신하거나 없으면 새로 만든다. 트랙은 **비어 있지 않을 때만**
     /// 갱신하고(= 상세 화면에서 트랙을 올린 전체본으로 저장할 때), 요약본으로 `update(_:)`를
     /// 호출해도 이미 저장된 트랙은 보존한다.
     @discardableResult
     private static func upsert(_ r: RideRecord, in ctx: NSManagedObjectContext) -> CDRide {
+        var r = r
+        r.duration = finite(r.duration)
+        r.totalElapsed = finite(r.totalElapsed)
+        r.distanceMeters = finite(r.distanceMeters)
+        r.averageSpeedMps = finite(r.averageSpeedMps)
+        r.maxSpeedMps = finite(r.maxSpeedMps)
+        r.track = sanitized(r.track)
+
         let req = CDRide.fetchRequest()
         req.predicate = NSPredicate(format: "id == %@", r.id as CVarArg)
         req.fetchLimit = 1
@@ -396,8 +436,12 @@ final class RideStore: ObservableObject {
             cd.endCoordData = r.track.last.flatMap { try? JSONEncoder().encode($0) }
         } else {
             cd.trackCount = Int32(r.trackCount)
-            if let s = r.startCoord { cd.startCoordData = try? JSONEncoder().encode(s) }
-            if let e = r.endCoord { cd.endCoordData = try? JSONEncoder().encode(e) }
+            if let s = r.startCoord, s.lat.isFinite, s.lon.isFinite {
+                cd.startCoordData = try? JSONEncoder().encode(s)
+            }
+            if let e = r.endCoord, e.lat.isFinite, e.lon.isFinite {
+                cd.endCoordData = try? JSONEncoder().encode(e)
+            }
         }
         return cd
     }

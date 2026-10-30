@@ -302,6 +302,16 @@ struct RoutesView: View {
     }
 
     @ViewBuilder private var statusBanner: some View {
+        if session.store.lastSaveFailed {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red)
+                Text("방금 변경사항 저장 실패 — 앱을 완전히 종료했다 다시 열어 기록이 그대로 있는지 확인하세요")
+                    .font(.caption).foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal).padding(.vertical, 6)
+            .background(.ultraThinMaterial)
+        }
         if let status = session.importStatus {
             HStack(spacing: 8) {
                 if session.isImportingFromHealth || session.isRestoringFromBackup {
