@@ -201,8 +201,8 @@ final class RideStore: ObservableObject {
     private var viewContext: NSManagedObjectContext { container.viewContext }
 
     init() {
-        loadPersistedAggregates()   // 레코드 로드 전에도 누적 거리 즉시 표시
         container = BikeComPersistence.makeContainer()
+        loadPersistedAggregates()   // 레코드 로드 전에도 누적 거리 즉시 표시
         NotificationCenter.default.addObserver(self, selector: #selector(storeRemoteChange),
                                                name: .NSPersistentStoreRemoteChange,
                                                object: container.persistentStoreCoordinator)
