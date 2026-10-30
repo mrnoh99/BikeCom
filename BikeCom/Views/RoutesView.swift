@@ -1280,9 +1280,13 @@ private struct DuplicateReviewSheet: View {
     init(candidates: RideSession.DuplicateCandidates, unit: DistanceUnit) {
         self.candidates = candidates
         self.unit = unit
-        // 기본 선택: Health 겹침은 전부, 같은 날·같은 코스 그룹은 GPS 포인트가 가장 많은(가장
-        // 상세한) 기록만 보존하고 나머지를 삭제 대상으로 미리 체크.
+        // 기본 선택: Health 겹침은 전부, 정확히 일치하는 중복·같은 날/같은 코스 그룹은 각각
+        // GPS 포인트가 가장 많은(가장 상세한) 기록만 보존하고 나머지를 삭제 대상으로 미리 체크.
         var initial = Set(candidates.overlappingHealth.map(\.id))
+        for group in candidates.exactDuplicateGroups {
+            let keep = group.max { $0.trackCount < $1.trackCount }?.id ?? group.first?.id
+            for r in group where r.id != keep { initial.insert(r.id) }
+        }
         for group in candidates.sameDayCourseGroups {
             let keep = group.max { $0.trackCount < $1.trackCount }?.id ?? group.first?.id
             for r in group where r.id != keep { initial.insert(r.id) }
@@ -1300,6 +1304,15 @@ private struct DuplicateReviewSheet: View {
                         Text("Health 중복 (\(candidates.overlappingHealth.count)건)")
                     } footer: {
                         Text("이미 다른 기록(GPX·앱 등)과 시간이 겹쳐 중복입니다. 기본적으로 모두 삭제가 선택돼 있습니다.")
+                    }
+                }
+                ForEach(Array(candidates.exactDuplicateGroups.enumerated()), id: \.offset) { _, group in
+                    Section {
+                        ForEach(group) { row($0) }
+                    } header: {
+                        Text(group.first.map { "정확히 일치하는 중복 (\(routeDateFormatter.string(from: $0.startedAt).prefix(10)))" } ?? "정확히 일치하는 중복")
+                    } footer: {
+                        Text("시작 시각·거리·소요 시간이 거의 같은 기록이 \(group.count)건 있습니다(재설치 후 중복 가져오기 등). 보존할 기록은 체크를 해제하세요 — 기본은 GPS 포인트가 가장 많은 기록만 남깁니다.")
                     }
                 }
                 ForEach(Array(candidates.sameDayCourseGroups.enumerated()), id: \.offset) { _, group in
@@ -1320,7 +1333,9 @@ private struct DuplicateReviewSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("삭제 (\(toDelete.count))") {
-                        let all = candidates.overlappingHealth + candidates.sameDayCourseGroups.flatMap { $0 }
+                        let all = candidates.overlappingHealth
+                            + candidates.exactDuplicateGroups.flatMap { $0 }
+                            + candidates.sameDayCourseGroups.flatMap { $0 }
                         session.confirmDeleteDuplicates(all.filter { toDelete.contains($0.id) })
                     }
                     .foregroundColor(.red)
