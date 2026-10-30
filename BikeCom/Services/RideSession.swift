@@ -643,11 +643,11 @@ final class RideSession: ObservableObject {
 
     /// 심박 측정 이어버즈(Powerbeats Pro 2 등)를 HealthKit 워크아웃 세션 경유로 수신.
     /// BLE 직결과 달리 음악 재생과 동시에 쓸 수 있다. ⚙️ → 센서 화면의 토글로 켠다.
-    /// 기본값 켜짐(값은 UserDefaults 에 영속) — 단, 실제 세션은 라이딩 중이거나 심박 중계
-    /// 모드일 때만 켜진다(updateEarbudsHeartRateSession 참고). 예전엔 이 토글이 켜져 있기만
-    /// 하면 앱을 실행만 해도(라이딩과 무관하게) HKWorkoutSession이 바로 시작돼 앱을 꺼도
-    /// 백그라운드에 계속 떠 있었다 — 상태 표시줄의 운동 세션 표시가 안 없어지고 배터리도
-    /// 계속 소모되는 원인이었다.
+    /// 기본값 켜짐(값은 UserDefaults 에 영속) — 앱이 열려 있으면 라이딩 여부와 무관하게
+    /// 기본으로 켠다(원래 의도한 동작). 단, 앱이 백그라운드로 내려가면 실제 라이딩 중이거나
+    /// 심박 중계 모드가 아닌 한 꺼서(updateEarbudsHeartRateSession 참고), 앱을 그냥 종료만
+    /// 해도 HKWorkoutSession 이 백그라운드에 계속 떠서 상태 표시줄 운동 세션 표시가 안
+    /// 없어지고 배터리가 계속 소모되던 문제를 막는다.
     @Published var earbudsHeartRateEnabled =
         (UserDefaults.standard.object(forKey: "bike.earbudsHeartRateEnabled") as? Bool) ?? true {
         didSet {
@@ -656,11 +656,15 @@ final class RideSession: ObservableObject {
         }
     }
 
-    /// 이어버즈 HealthKit 세션은 **라이딩 중이거나 심박 중계 모드일 때만** 켠다 — 토글이
-    /// 켜져 있다고 앱을 실행만 해도(유휴 상태) 계속 돌면 안 된다(위 주석 참고).
-    /// start()/stop() 은 idempotent 라 중복 호출해도 안전하다.
+    /// 앱이 백그라운드에 있는지 — 이어버즈 세션을 백그라운드에서 계속 켜 둘지 판단하는 데만 쓴다.
+    private var isAppInBackground = false
+
+    /// 이어버즈 HealthKit 세션은 토글이 켜져 있으면 **앱이 포그라운드에 있는 동안엔 항상** 켠다
+    /// (원래 의도한 기본 동작). 앱이 백그라운드로 내려간 뒤에는 실제로 라이딩 중이거나 심박
+    /// 중계 모드일 때만 계속 켜 둔다 — 그 외엔 꺼서 앱만 닫아도 워크아웃 세션이 백그라운드에
+    /// 무한정 남아있지 않게 한다. start()/stop() 은 idempotent 라 중복 호출해도 안전하다.
     private func updateEarbudsHeartRateSession() {
-        if earbudsHeartRateEnabled, state != .idle || heartRateRelayOnly {
+        if earbudsHeartRateEnabled, !isAppInBackground || state != .idle || heartRateRelayOnly {
             healthKitHeartRate.start()
         } else {
             healthKitHeartRate.stop()
@@ -782,9 +786,27 @@ final class RideSession: ObservableObject {
 
         location.requestAuthorization()
         watch.requestAuthorization()
+
+        // 앱이 백그라운드로 내려가거나 다시 포그라운드로 오면 이어버즈 세션을 끄고/켠다
+        // (updateEarbudsHeartRateSession 참고) — 앱을 열고 있는 동안은 항상 켜지지만,
+        // 그냥 닫아 버리면(라이딩 중이 아닌 한) 꺼지도록.
+        NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
+            .sink { [weak self] _ in
+                self?.isAppInBackground = true
+                self?.updateEarbudsHeartRateSession()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
+            .sink { [weak self] _ in
+                self?.isAppInBackground = false
+                self?.updateEarbudsHeartRateSession()
+            }
+            .store(in: &cancellables)
+
         // didSet 은 프로퍼티 초기값 설정 시 호출되지 않으므로, 기본 상태를 여기서 반영한다.
-        // (state == .idle, heartRateRelayOnly == false 인 시점이라 실제로는 세션을 시작하지
-        // 않는다 — 앱을 열기만 해도 워크아웃 세션이 떠 있던 문제를 고친 것.)
+        // 앱 실행 시점엔 포그라운드(isAppInBackground == false)이므로, 토글이 켜져 있으면
+        // 라이딩 여부와 무관하게 바로 시작된다(원래 의도한 기본 동작).
         updateEarbudsHeartRateSession()
 
         // 워치 DISCONNECT(폰 주행 중)만 종료 요청. CONNECT 는 워치에서 센서만 켜고 폰 Start 와 분리.
