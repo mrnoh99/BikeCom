@@ -183,6 +183,21 @@ final class RideStore: ObservableObject {
     /// 그 순간 바로 알 수 있게 한다(예전엔 print()만 해서 콘솔을 안 보면 알 길이 없었다).
     @Published private(set) var lastSaveFailed = false
 
+    // MARK: CloudKit 동기화 상태 — "지금 서버에 다 올라갔는지" 확인할 방법이 전혀 없어서,
+    // 삭제 직후 재설치하면 그 삭제가 서버에 반영되기 전에 로컬이 통째로 날아가는 사고가
+    // 있었다(기기 여러 대로 재현 확인됨). `NSPersistentCloudKitContainer.eventChangedNotification`
+    // 으로 가져오기(import)·내보내기(export) 진행 상황을 직접 관찰해 화면에 보여준다.
+
+    /// CloudKit으로 올리는 중(내보내기 진행 중)인지. true 인 동안은 앱을 끄거나 재설치하면
+    /// 안 된다 — 방금 지우거나 바꾼 내용이 아직 서버에 안 올라간 상태일 수 있다.
+    @Published private(set) var cloudExportInProgress = false
+    /// 가장 최근 내보내기가 실패했는지(네트워크 끊김·iCloud 로그인 안 됨 등).
+    @Published private(set) var cloudExportFailed = false
+    /// 마지막으로 내보내기가 성공적으로 끝난 시각.
+    @Published private(set) var lastCloudExportAt: Date?
+    /// 마지막으로 가져오기(다른 기기 변경 수신)가 성공적으로 끝난 시각.
+    @Published private(set) var lastCloudImportAt: Date?
+
     // MARK: 누적 거리 캐시 (오도미터 방식)
     // 렌더마다 records 전체를 합산하지 않도록, 변경 시에만 1회 갱신해 캐시한다.
     // 월별 버킷(year*100+month → m)을 들고 있으면 이번 달·올해·전체를 즉시 계산할 수 있고,
@@ -222,6 +237,9 @@ final class RideStore: ObservableObject {
         NotificationCenter.default.addObserver(self, selector: #selector(storeRemoteChange),
                                                name: .NSPersistentStoreRemoteChange,
                                                object: container.persistentStoreCoordinator)
+        NotificationCenter.default.addObserver(self, selector: #selector(cloudKitEventChanged(_:)),
+                                               name: NSPersistentCloudKitContainer.eventChangedNotification,
+                                               object: container)
         // loadPersistentStores 는 비동기다 — 완료 전에 fetch를 먼저 돌리면(레이스) 스토어가
         // 아직 안 붙어 있어 빈 결과를 받을 수 있다. 완료 핸들러 안에서만 읽기 시작한다.
         // 핸들러는 메인 스레드 호출이 보장되지 않으므로 명시적으로 메인에 올린다.
@@ -247,6 +265,44 @@ final class RideStore: ObservableObject {
             // 채로는 최신 기록이 한동안 안 보이다가, 완전히 종료 후 재실행하면 바로 보였다)
             // 한 번 더 뒤늦게 재확인해서 그 틈을 메운다.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self?.refreshRecords() }
+        }
+    }
+
+    /// CloudKit 가져오기(import)·내보내기(export) 각 단계의 시작·끝을 알려준다. `event.endDate`
+    /// 가 nil이면 아직 진행 중이고, 끝났을 때 `event.succeeded`로 성공 여부를 알 수 있다 —
+    /// 삭제·수정한 내용이 실제로 서버까지 올라갔는지 화면에서 확인할 방법이 전혀 없어서,
+    /// 내보내기가 끝나기 전에 재설치하면 그 변경 자체가 통째로 날아가는 사고가 있었다
+    /// (여러 기기에서 재현 확인됨).
+    @objc private func cloudKitEventChanged(_ note: Notification) {
+        guard let event = note.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
+                as? NSPersistentCloudKitContainer.Event else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            switch event.type {
+            case .export:
+                if event.endDate == nil {
+                    self.cloudExportInProgress = true
+                } else {
+                    self.cloudExportInProgress = false
+                    if event.succeeded {
+                        self.cloudExportFailed = false
+                        self.lastCloudExportAt = event.endDate
+                    } else {
+                        self.cloudExportFailed = true
+                        if let error = event.error {
+                            print("CloudKit 내보내기 실패: \(error)")
+                        }
+                    }
+                }
+            case .import:
+                if event.endDate != nil, event.succeeded {
+                    self.lastCloudImportAt = event.endDate
+                }
+            case .setup:
+                break
+            @unknown default:
+                break
+            }
         }
     }
 

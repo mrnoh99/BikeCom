@@ -261,6 +261,22 @@ struct RoutesView: View {
                     Label("마지막 자동 백업: \(backupTimeText)", systemImage: "checkmark.icloud")
                 }
             }
+            Section("iCloud 동기화") {
+                if session.store.cloudExportInProgress {
+                    Label("업로드 중…", systemImage: "icloud.and.arrow.up")
+                } else if session.store.cloudExportFailed {
+                    Label("업로드 실패", systemImage: "exclamationmark.icloud")
+                        .foregroundColor(.orange)
+                } else if let at = session.store.lastCloudExportAt {
+                    Label("마지막 업로드: \(routeDateFormatter.string(from: at))", systemImage: "icloud.and.arrow.up")
+                } else {
+                    Label("아직 업로드 기록 없음", systemImage: "icloud.slash")
+                        .foregroundColor(.secondary)
+                }
+                if let at = session.store.lastCloudImportAt {
+                    Label("마지막 수신: \(routeDateFormatter.string(from: at))", systemImage: "icloud.and.arrow.down")
+                }
+            }
         } label: {
             Image(systemName: "tray.and.arrow.down")
         }
@@ -302,6 +318,27 @@ struct RoutesView: View {
     }
 
     @ViewBuilder private var statusBanner: some View {
+        // iCloud 업로드가 끝나기 전에 앱을 종료·재설치하면 방금 지우거나 바꾼 내용이 서버에
+        // 반영되기 전에 통째로 날아간다(실제로 재현된 사고) — 업로드 중엔 눈에 띄게 경고한다.
+        if session.store.cloudExportInProgress {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("iCloud에 업로드 중… 끝날 때까지 앱을 종료하거나 재설치하지 마세요")
+                    .font(.caption).foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal).padding(.vertical, 6)
+            .background(.ultraThinMaterial)
+        } else if session.store.cloudExportFailed {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.icloud.fill").foregroundColor(.orange)
+                Text("iCloud 업로드 실패 — 연결·저장 공간을 확인하세요(로컬 기록은 안전합니다)")
+                    .font(.caption).foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal).padding(.vertical, 6)
+            .background(.ultraThinMaterial)
+        }
         if session.store.lastSaveFailed {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red)
