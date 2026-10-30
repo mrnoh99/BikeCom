@@ -585,7 +585,7 @@ struct MapSettingsSheet: View {
                         Text("저장된 지도 코스가 없습니다. 라이딩 기록 상세에서 '지도 코스로 복사'로 추가하세요.")
                             .font(.caption).foregroundColor(.secondary)
                     }
-                    ForEach(courseRecords) { course in
+                    ForEach(courseRecords, id: \.uniqueKey) { course in
                         Button {
                             session.setFollowCourse(course); dismiss()
                         } label: {

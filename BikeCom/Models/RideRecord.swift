@@ -44,6 +44,22 @@ struct RideRecord: Identifiable, Codable {
     /// 지도 보조(코스)로만 사용하며, 목록 맨 위에 고정한다.
     var isCourseOnly: Bool
 
+    /// 이 레코드가 변환돼 나온 실제 Core Data 객체의 식별자(`NSManagedObjectID` URI 문자열).
+    /// CloudKit은 유니크 제약(unique constraint)을 지원하지 않아 `id`(UUID)가 **기기 간 동기화
+    /// 과정에서 우연히 중복**될 수 있다 — 예를 들어 레거시 백업을 서로 다른 두 기기가 거의
+    /// 동시에 재가져오기하면, 둘 다 자기 로컬 저장소엔 그 id가 없다고 보고 각자 새 Core Data
+    /// 객체를 만들어 CloudKit에 올리고, 그 결과 "같은 id를 가진 서로 다른 두 레코드"가 모든
+    /// 기기에 그대로 동기화돼 버린다. 이렇게 되면 `id`만으로는 두 레코드를 구분할 수 없어
+    /// (삭제·선택 모두 엉뚱한 쪽을 건드리거나 둘 다 건드리는 등) 중복 삭제가 제대로 안 된다.
+    /// `objectIDURI`는 Core Data가 보장하는 진짜 유니크 값이라 이런 충돌이 없다 — 백업
+    /// zip·GPX 등 내보내기엔 의미가 없으므로(기기·저장소마다 다름) Codable 대상에서 제외하고
+    /// `summary(of:)`/`full(of:)`에서만 채운다.
+    var objectIDURI: String? = nil
+
+    /// 목록 표시·삭제 대상 지정에 쓸 진짜 유니크 키. `id`가 위 이유로 중복될 수 있으므로
+    /// `SwiftUI List`/`ForEach`의 identity나 삭제 대상 선택엔 `id` 대신 이 값을 써야 한다.
+    var uniqueKey: String { objectIDURI ?? id.uuidString }
+
     struct Coordinate: Codable {
         var lat: Double
         var lon: Double
@@ -311,7 +327,7 @@ final class RideStore: ObservableObject {
     }
 
     func delete(_ record: RideRecord) {
-        Self.deleteByID(record.id, in: viewContext)
+        Self.delete(record, in: viewContext)
         saveContext()
         refreshRecords()
     }
@@ -320,7 +336,7 @@ final class RideStore: ObservableObject {
     /// 변경을 발행해 화면이 중간 상태를 여러 번 다시 그리므로, 모아서 한 번에 저장·발행한다.
     func deleteMany(_ toDelete: [RideRecord]) {
         guard !toDelete.isEmpty else { return }
-        for r in toDelete { Self.deleteByID(r.id, in: viewContext) }
+        for r in toDelete { Self.delete(r, in: viewContext) }
         saveContext()
         refreshRecords()
     }
@@ -367,6 +383,7 @@ final class RideStore: ObservableObject {
             mapName: cd.mapName,
             isCourseOnly: cd.isCourseOnly
         )
+        r.objectIDURI = cd.objectID.uriRepresentation().absoluteString
         r.trackCount = Int(cd.trackCount)
         if let data = cd.startCoordData {
             r.startCoord = try? JSONDecoder().decode(RideRecord.Coordinate.self, from: data)
@@ -457,6 +474,23 @@ final class RideStore: ObservableObject {
             }
         }
         return cd
+    }
+
+    /// `id`만으로 지우면(`deleteByID`) 위 `objectIDURI` 주석에서 설명한 중복 상황에서 둘 중
+    /// 하나만(어느 쪽인지 알 수 없게) 지워진다 — 중복 기록 정리에서 "이 행만" 지우려 해도
+    /// 안 지워지거나 엉뚱한 쪽이 지워지는 원인. `objectIDURI`가 있으면 그 정확한 객체를
+    /// 지워서 이 문제를 피하고, 없을 때만(한 번도 Core Data를 거치지 않은 등 드문 경우)
+    /// id 기반으로 폴백한다.
+    private static func delete(_ r: RideRecord, in ctx: NSManagedObjectContext) {
+        if let uriString = r.objectIDURI,
+           let uri = URL(string: uriString),
+           let coordinator = ctx.persistentStoreCoordinator,
+           let objectID = coordinator.managedObjectID(forURIRepresentation: uri),
+           let obj = try? ctx.existingObject(with: objectID) {
+            ctx.delete(obj)
+            return
+        }
+        deleteByID(r.id, in: ctx)
     }
 
     private static func deleteByID(_ id: UUID, in ctx: NSManagedObjectContext) {

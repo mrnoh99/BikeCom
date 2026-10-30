@@ -354,7 +354,10 @@ struct RoutesView: View {
     private var flatList: some View {
         let visible = flatRecords.prefix(visibleFlatCount)
         return List {
-            ForEach(visible) { record in
+            // id: \.uniqueKey — RideRecord.id(UUID)는 재설치 등으로 같은 id의 서로 다른
+            // 레코드가 동시에 존재할 수 있어(RideRecord.objectIDURI 주석 참고) 기본 Identifiable
+            // 로 ForEach를 돌리면 한쪽 행이 사라지거나 스와이프 삭제가 엉뚱한 쪽을 지울 수 있다.
+            ForEach(visible, id: \.uniqueKey) { record in
                 NavigationLink {
                     RideDetailView(record: record, unit: session.unit)
                 } label: {
@@ -504,7 +507,7 @@ struct RouteGroupView: View {
             }
 
             Section("라이딩") {
-                ForEach(cachedSorted.prefix(visibleCount)) { record in
+                ForEach(cachedSorted.prefix(visibleCount), id: \.uniqueKey) { record in
                     NavigationLink {
                         RideDetailView(record: record, unit: session.unit)
                     } label: {
@@ -1275,21 +1278,26 @@ private struct DuplicateReviewSheet: View {
     @EnvironmentObject var session: RideSession
     let candidates: RideSession.DuplicateCandidates
     let unit: DistanceUnit
-    @State private var toDelete: Set<RideRecord.ID>
+    // `RideRecord.id`가 아니라 `uniqueKey`(Core Data objectID 기반)로 선택을 추적한다 — 재설치
+    // 등으로 같은 id를 가진 서로 다른 두 레코드가 동시에 존재할 수 있어(RideRecord.objectIDURI
+    // 주석 참고), id 로 선택을 추적하면 한쪽을 체크해도 다른 쪽까지 같이 체크된 것처럼 보이거나
+    // (Set<UUID>라 구분이 안 됨), 자동 선택 자체가 계산되지 않는(서로를 "같은 것"으로 착각해
+    // 삭제 대상에서 자기 자신을 제외하는) 버그가 있었다.
+    @State private var toDelete: Set<String>
 
     init(candidates: RideSession.DuplicateCandidates, unit: DistanceUnit) {
         self.candidates = candidates
         self.unit = unit
         // 기본 선택: Health 겹침은 전부, 정확히 일치하는 중복·같은 날/같은 코스 그룹은 각각
         // GPS 포인트가 가장 많은(가장 상세한) 기록만 보존하고 나머지를 삭제 대상으로 미리 체크.
-        var initial = Set(candidates.overlappingHealth.map(\.id))
+        var initial = Set(candidates.overlappingHealth.map(\.uniqueKey))
         for group in candidates.exactDuplicateGroups {
-            let keep = group.max { $0.trackCount < $1.trackCount }?.id ?? group.first?.id
-            for r in group where r.id != keep { initial.insert(r.id) }
+            let keep = group.max { $0.trackCount < $1.trackCount }?.uniqueKey ?? group.first?.uniqueKey
+            for r in group where r.uniqueKey != keep { initial.insert(r.uniqueKey) }
         }
         for group in candidates.sameDayCourseGroups {
-            let keep = group.max { $0.trackCount < $1.trackCount }?.id ?? group.first?.id
-            for r in group where r.id != keep { initial.insert(r.id) }
+            let keep = group.max { $0.trackCount < $1.trackCount }?.uniqueKey ?? group.first?.uniqueKey
+            for r in group where r.uniqueKey != keep { initial.insert(r.uniqueKey) }
         }
         _toDelete = State(initialValue: initial)
     }
@@ -1299,7 +1307,7 @@ private struct DuplicateReviewSheet: View {
             List {
                 if !candidates.overlappingHealth.isEmpty {
                     Section {
-                        ForEach(candidates.overlappingHealth) { row($0) }
+                        ForEach(candidates.overlappingHealth, id: \.uniqueKey) { row($0) }
                     } header: {
                         Text("Health 중복 (\(candidates.overlappingHealth.count)건)")
                     } footer: {
@@ -1308,7 +1316,7 @@ private struct DuplicateReviewSheet: View {
                 }
                 ForEach(Array(candidates.exactDuplicateGroups.enumerated()), id: \.offset) { _, group in
                     Section {
-                        ForEach(group) { row($0) }
+                        ForEach(group, id: \.uniqueKey) { row($0) }
                     } header: {
                         Text(group.first.map { "정확히 일치하는 중복 (\(routeDateFormatter.string(from: $0.startedAt).prefix(10)))" } ?? "정확히 일치하는 중복")
                     } footer: {
@@ -1317,7 +1325,7 @@ private struct DuplicateReviewSheet: View {
                 }
                 ForEach(Array(candidates.sameDayCourseGroups.enumerated()), id: \.offset) { _, group in
                     Section {
-                        ForEach(group) { row($0) }
+                        ForEach(group, id: \.uniqueKey) { row($0) }
                     } header: {
                         Text(group.first.map { "같은 날·같은 코스 (\(routeDateFormatter.string(from: $0.startedAt).prefix(10)))" } ?? "같은 날·같은 코스")
                     } footer: {
@@ -1336,7 +1344,7 @@ private struct DuplicateReviewSheet: View {
                         let all = candidates.overlappingHealth
                             + candidates.exactDuplicateGroups.flatMap { $0 }
                             + candidates.sameDayCourseGroups.flatMap { $0 }
-                        session.confirmDeleteDuplicates(all.filter { toDelete.contains($0.id) })
+                        session.confirmDeleteDuplicates(all.filter { toDelete.contains($0.uniqueKey) })
                     }
                     .foregroundColor(.red)
                     .disabled(toDelete.isEmpty)
@@ -1356,9 +1364,9 @@ private struct DuplicateReviewSheet: View {
     }
 
     private func row(_ r: RideRecord) -> some View {
-        let selected = toDelete.contains(r.id)
+        let selected = toDelete.contains(r.uniqueKey)
         return Button {
-            if selected { toDelete.remove(r.id) } else { toDelete.insert(r.id) }
+            if selected { toDelete.remove(r.uniqueKey) } else { toDelete.insert(r.uniqueKey) }
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
