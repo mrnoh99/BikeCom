@@ -154,7 +154,7 @@ struct CourseManagerView: View {
     var body: some View {
         List {
             Section {
-                ForEach(courseRecords) { rec in
+                ForEach(courseRecords, id: \.uniqueKey) { rec in
                     CourseManagerRow(record: rec)
                 }
                 .onDelete { idx in
