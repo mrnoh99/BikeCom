@@ -1,10 +1,7 @@
-# XcodeGen 프로젝트 정의. 이 파일이 바뀌면 .github/workflows/xcodegen.yml 이
-# macOS 러너에서 `xcodegen generate` 를 실행해 BikeCom.xcodeproj 를 자동 재생성·커밋한다.
-#
-# 저장소를 Core Data(BikeCom/Models/BikeCom.xcdatamodeld) + NSPersistentCloudKitContainer로
-# 전환하면서 새 소스 파일(CDRide.swift·BikeComPersistence.swift·LegacyRideImporter.swift)이
-# 추가됐다 — `sources: path: BikeCom`이 전체를 glob하므로 project.pbxproj엔 이 커밋에서
-# 손대지 않고, 이 파일을 건드려 위 워크플로가 자동으로 재생성·커밋하게 한다.
+# XcodeGen 프로젝트 정의. 이 파일이나 BikeCom/** 등 소스 트리가 바뀌면
+# .github/workflows/xcodegen.yml 이 macOS 러너에서 `xcodegen generate` 를 실행해
+# BikeCom.xcodeproj 를 자동 재생성·커밋한다(`sources: path: BikeCom`이 전체를 glob하므로,
+# 소스 파일을 추가·삭제할 때마다 project.pbxproj 를 수동으로 고칠 필요는 없다).
 name: BikeCom
 options:
   bundleIdPrefix: com.jaisungnoh.bikecom
