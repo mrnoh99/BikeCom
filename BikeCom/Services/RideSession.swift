@@ -628,27 +628,42 @@ final class RideSession: ObservableObject {
         didSet {
             updateScreenAwake()
             updateHeartRateBroadcast()
+            updateEarbudsHeartRateSession()
         }
     }
 
     /// 라이딩(GPS·거리 기록)을 시작하지 않고 지금 받고 있는 심박(워치 또는 폰 BLE)만
     /// BLE 로 재광고. ⚙️ → 센서 화면의 토글로 켠다.
     @Published var heartRateRelayOnly = false {
-        didSet { updateHeartRateBroadcast() }
+        didSet {
+            updateHeartRateBroadcast()
+            updateEarbudsHeartRateSession()
+        }
     }
 
     /// 심박 측정 이어버즈(Powerbeats Pro 2 등)를 HealthKit 워크아웃 세션 경유로 수신.
     /// BLE 직결과 달리 음악 재생과 동시에 쓸 수 있다. ⚙️ → 센서 화면의 토글로 켠다.
-    /// 기본값 켜짐(처음 실행 시 자동 시작) — 값은 UserDefaults 에 영속.
+    /// 기본값 켜짐(값은 UserDefaults 에 영속) — 단, 실제 세션은 라이딩 중이거나 심박 중계
+    /// 모드일 때만 켜진다(updateEarbudsHeartRateSession 참고). 예전엔 이 토글이 켜져 있기만
+    /// 하면 앱을 실행만 해도(라이딩과 무관하게) HKWorkoutSession이 바로 시작돼 앱을 꺼도
+    /// 백그라운드에 계속 떠 있었다 — 상태 표시줄의 운동 세션 표시가 안 없어지고 배터리도
+    /// 계속 소모되는 원인이었다.
     @Published var earbudsHeartRateEnabled =
         (UserDefaults.standard.object(forKey: "bike.earbudsHeartRateEnabled") as? Bool) ?? true {
         didSet {
             UserDefaults.standard.set(earbudsHeartRateEnabled, forKey: "bike.earbudsHeartRateEnabled")
-            if earbudsHeartRateEnabled {
-                healthKitHeartRate.start()
-            } else {
-                healthKitHeartRate.stop()
-            }
+            updateEarbudsHeartRateSession()
+        }
+    }
+
+    /// 이어버즈 HealthKit 세션은 **라이딩 중이거나 심박 중계 모드일 때만** 켠다 — 토글이
+    /// 켜져 있다고 앱을 실행만 해도(유휴 상태) 계속 돌면 안 된다(위 주석 참고).
+    /// start()/stop() 은 idempotent 라 중복 호출해도 안전하다.
+    private func updateEarbudsHeartRateSession() {
+        if earbudsHeartRateEnabled, state != .idle || heartRateRelayOnly {
+            healthKitHeartRate.start()
+        } else {
+            healthKitHeartRate.stop()
         }
     }
 
@@ -767,8 +782,10 @@ final class RideSession: ObservableObject {
 
         location.requestAuthorization()
         watch.requestAuthorization()
-        // didSet 은 프로퍼티 초기값 설정 시 호출되지 않으므로, 기본 켜짐 상태를 여기서 반영.
-        if earbudsHeartRateEnabled { healthKitHeartRate.start() }
+        // didSet 은 프로퍼티 초기값 설정 시 호출되지 않으므로, 기본 상태를 여기서 반영한다.
+        // (state == .idle, heartRateRelayOnly == false 인 시점이라 실제로는 세션을 시작하지
+        // 않는다 — 앱을 열기만 해도 워크아웃 세션이 떠 있던 문제를 고친 것.)
+        updateEarbudsHeartRateSession()
 
         // 워치 DISCONNECT(폰 주행 중)만 종료 요청. CONNECT 는 워치에서 센서만 켜고 폰 Start 와 분리.
         watch.onWatchRequest = { [weak self] start in
