@@ -8,6 +8,14 @@ on:
   push:
     paths:
       - project.yml
+      # project.yml 뿐 아니라 소스 트리(BikeCom/** 등)가 바뀔 때도(파일 추가·삭제 포함) 돌려야
+      # 한다 — project.pbxproj는 `xcodegen generate` 시점의 스냅샷이라, project.yml 은 안
+      # 건드리고 .swift 파일만 지워도(예: LegacyRideImporter.swift 삭제) pbxproj엔 그 파일이
+      # 빌드 입력으로 여전히 남아 "Build input file cannot be found" 로 빌드가 깨진다.
+      - BikeCom/**
+      - BikeComWatch/**
+      - BikeComShared/**
+      - BikeComWatchWidget/**
   workflow_dispatch: {}
 
 permissions:
