@@ -1,6 +1,7 @@
 import Foundation
 import HealthKit
 import Combine
+import UIKit
 
 /// 폰 단독 `HKWorkoutSession`(iOS 26+)으로 심박 측정 이어버즈(Powerbeats Pro 2 등)의 심박을
 /// **HealthKit 경유**로 실시간 수신한다.
@@ -77,14 +78,37 @@ final class HealthKitHeartRateManager: NSObject, ObservableObject {
         }
     }
 
+    /// `session.end()`/`builder.endCollection(withEnd:completion:)`는 모두 비동기다 — 앱이
+    /// 백그라운드로 내려간 직후 곧바로 완전히 서스펜드·종료되면 이 처리가 끝나기 전에 끊겨서,
+    /// 시스템이 "운동 세션이 아직 살아있다"고 보고 상태 표시줄 표시(+배터리 소모)가 한동안
+    /// 안 없어지는 문제가 실제로 있었다. `beginBackgroundTask`로 종료 처리가 끝날 때까지
+    /// 몇 초 더 실행 시간을 확보해 이 레이스를 줄인다(사용자가 앱 스위처에서 바로 강제
+    /// 종료하는 경우까지는 어떤 방법으로도 막을 수 없다 — 그 경우 OS가 즉시 프로세스를 죽인다).
     func stop() {
         isStarting = false
         guard let activeSession = session else { return }
         let activeBuilder = builder
         session = nil
         builder = nil
+
+        var taskID: UIBackgroundTaskIdentifier = .invalid
+        taskID = UIApplication.shared.beginBackgroundTask(withName: "HealthKitHeartRateStop") {
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+
         activeSession.end()
-        activeBuilder?.endCollection(withEnd: Date()) { _, _ in }
+        if let activeBuilder {
+            activeBuilder.endCollection(withEnd: Date()) { _, _ in
+                guard taskID != .invalid else { return }
+                UIApplication.shared.endBackgroundTask(taskID)
+                taskID = .invalid
+            }
+        } else if taskID != .invalid {
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+
         DispatchQueue.main.async {
             self.active = false
             self.bpm = 0
