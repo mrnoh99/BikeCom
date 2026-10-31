@@ -156,6 +156,14 @@ struct RoutesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top) { statusBanner }
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text("Routes").font(.headline)
+                    Text(cloudSyncStatusText)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
             ToolbarItem(placement: .navigationBarLeading) { dataMenu }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -284,6 +292,24 @@ struct RoutesView: View {
 
     private var backupTimeText: String {
         routeDateFormatter.string(from: Date(timeIntervalSince1970: lastBackupAt))
+    }
+
+    /// 제목 아래 작은 글씨로 보여줄, 업로드(내보내기)·수신(가져오기)을 합친 iCloud 동기화 상태.
+    private var cloudSyncStatusText: String {
+        let store = session.store
+        if store.cloudExportInProgress || store.cloudImportInProgress {
+            return "iCloud 동기화 중…"
+        }
+        if store.cloudExportFailed {
+            return "iCloud 업로드 실패"
+        }
+        if store.hasUnsyncedChanges {
+            return "iCloud 업로드 대기 중"
+        }
+        if let latest = [store.lastCloudExportAt, store.lastCloudImportAt].compactMap({ $0 }).max() {
+            return "iCloud 동기화 완료 · \(routeDateFormatter.string(from: latest))"
+        }
+        return "iCloud 동기화 대기 중"
     }
 
     // 현재 전체 기록을 BikeCom-Backup.json + zip 으로 만들어 공유 시트로 내보낸다.

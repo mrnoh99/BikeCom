@@ -191,6 +191,8 @@ final class RideStore: ObservableObject {
     /// CloudKit으로 올리는 중(내보내기 진행 중)인지. true 인 동안은 앱을 끄거나 재설치하면
     /// 안 된다 — 방금 지우거나 바꾼 내용이 아직 서버에 안 올라간 상태일 수 있다.
     @Published private(set) var cloudExportInProgress = false
+    /// CloudKit에서 받아오는 중(가져오기 진행 중)인지.
+    @Published private(set) var cloudImportInProgress = false
     /// 가장 최근 내보내기가 실패했는지(네트워크 끊김·iCloud 로그인 안 됨 등).
     @Published private(set) var cloudExportFailed = false
     /// 마지막으로 내보내기가 성공적으로 끝난 시각.
@@ -201,6 +203,10 @@ final class RideStore: ObservableObject {
     /// 자동으로 사라지는 배너용. 메뉴의 "마지막 업로드" 시각과 달리, 매번 직접 확인하러 가지
     /// 않아도 끝난 순간을 바로 알 수 있게 한다.
     @Published private(set) var cloudExportJustSucceeded = false
+    /// 로컬에 저장은 됐지만 CloudKit 내보내기가 성공으로 끝나는 걸 아직 못 본 변경이 있는지.
+    /// `saveContext()`가 성공할 때 true로 세우고, 내보내기 이벤트가 성공으로 끝나면 false로
+    /// 내린다 — "지금까지의 데이터가 전부 iCloud에 올라갔는지"를 한눈에 보여주는 근거.
+    @Published private(set) var hasUnsyncedChanges = false
 
     // MARK: 누적 거리 캐시 (오도미터 방식)
     // 렌더마다 records 전체를 합산하지 않도록, 변경 시에만 1회 갱신해 캐시한다.
@@ -291,6 +297,7 @@ final class RideStore: ObservableObject {
                     if event.succeeded {
                         self.cloudExportFailed = false
                         self.lastCloudExportAt = event.endDate
+                        self.hasUnsyncedChanges = false
                         self.cloudExportJustSucceeded = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
                             self?.cloudExportJustSucceeded = false
@@ -303,8 +310,13 @@ final class RideStore: ObservableObject {
                     }
                 }
             case .import:
-                if event.endDate != nil, event.succeeded {
-                    self.lastCloudImportAt = event.endDate
+                if event.endDate == nil {
+                    self.cloudImportInProgress = true
+                } else {
+                    self.cloudImportInProgress = false
+                    if event.succeeded {
+                        self.lastCloudImportAt = event.endDate
+                    }
                 }
             case .setup:
                 break
@@ -382,6 +394,9 @@ final class RideStore: ObservableObject {
         do {
             try viewContext.save()
             lastSaveFailed = false
+            // 로컬 저장은 됐지만 CloudKit 내보내기가 끝났다는 보장은 아직 없다 — 다음 export
+            // 이벤트가 성공으로 끝날 때 cloudKitEventChanged 에서 false로 내린다.
+            hasUnsyncedChanges = true
         } catch {
             // Core Data 저장 실패는 드물지만(디스크 공간, CloudKit이 거부하는 값 등), 크래시
             // 대신 로그 + 플래그로 남긴다. 저장이 실패해도 방금 추가/수정한 내용은 이 컨텍스트
