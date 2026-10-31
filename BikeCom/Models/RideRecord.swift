@@ -197,6 +197,10 @@ final class RideStore: ObservableObject {
     @Published private(set) var lastCloudExportAt: Date?
     /// 마지막으로 가져오기(다른 기기 변경 수신)가 성공적으로 끝난 시각.
     @Published private(set) var lastCloudImportAt: Date?
+    /// 내보내기가 막 성공적으로 끝났을 때 잠깐(4초) true — "업로드 완료"를 눈에 띄게 알리고
+    /// 자동으로 사라지는 배너용. 메뉴의 "마지막 업로드" 시각과 달리, 매번 직접 확인하러 가지
+    /// 않아도 끝난 순간을 바로 알 수 있게 한다.
+    @Published private(set) var cloudExportJustSucceeded = false
 
     // MARK: 누적 거리 캐시 (오도미터 방식)
     // 렌더마다 records 전체를 합산하지 않도록, 변경 시에만 1회 갱신해 캐시한다.
@@ -287,6 +291,10 @@ final class RideStore: ObservableObject {
                     if event.succeeded {
                         self.cloudExportFailed = false
                         self.lastCloudExportAt = event.endDate
+                        self.cloudExportJustSucceeded = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                            self?.cloudExportJustSucceeded = false
+                        }
                     } else {
                         self.cloudExportFailed = true
                         if let error = event.error {

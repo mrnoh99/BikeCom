@@ -338,6 +338,19 @@ struct RoutesView: View {
             }
             .padding(.horizontal).padding(.vertical, 6)
             .background(.ultraThinMaterial)
+        } else if session.store.cloudExportJustSucceeded {
+            // 업로드 중 배너가 사라지는 순간 조용히 넘어가면 "끝났는지" 직접 메뉴를 열어
+            // 확인해야 했다 — 완료 직후 몇 초간 눈에 띄게 알려준다(4초 뒤 자동으로 사라짐).
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.icloud.fill").foregroundColor(.green)
+                Text("iCloud 업로드 완료")
+                    .font(.caption).foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal).padding(.vertical, 6)
+            .background(.ultraThinMaterial)
+            .transition(.opacity)
+            .animation(.easeInOut, value: session.store.cloudExportJustSucceeded)
         }
         if session.store.lastSaveFailed {
             HStack(spacing: 8) {
