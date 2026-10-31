@@ -156,6 +156,14 @@ struct RoutesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top) { statusBanner }
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text("Routes").font(.headline)
+                    Text(cloudSyncStatusText)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
             ToolbarItem(placement: .navigationBarLeading) { dataMenu }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -286,6 +294,24 @@ struct RoutesView: View {
         routeDateFormatter.string(from: Date(timeIntervalSince1970: lastBackupAt))
     }
 
+    /// 제목 아래 작은 글씨로 보여줄, 업로드(내보내기)·수신(가져오기)을 합친 iCloud 동기화 상태.
+    private var cloudSyncStatusText: String {
+        let store = session.store
+        if store.cloudExportInProgress || store.cloudImportInProgress {
+            return "iCloud 동기화 중…"
+        }
+        if store.cloudExportFailed {
+            return "iCloud 업로드 실패"
+        }
+        if store.hasUnsyncedChanges {
+            return "iCloud 업로드 대기 중"
+        }
+        if let latest = [store.lastCloudExportAt, store.lastCloudImportAt].compactMap({ $0 }).max() {
+            return "iCloud 동기화 완료 · \(routeDateFormatter.string(from: latest))"
+        }
+        return "iCloud 동기화 대기 중"
+    }
+
     // 현재 전체 기록을 BikeCom-Backup.json + zip 으로 만들어 공유 시트로 내보낸다.
     private func backupNow() {
         session.importStatus = "백업 zip 만드는 중…(트랙 포함)"
@@ -338,6 +364,19 @@ struct RoutesView: View {
             }
             .padding(.horizontal).padding(.vertical, 6)
             .background(.ultraThinMaterial)
+        } else if session.store.cloudExportJustSucceeded {
+            // 업로드 중 배너가 사라지는 순간 조용히 넘어가면 "끝났는지" 직접 메뉴를 열어
+            // 확인해야 했다 — 완료 직후 몇 초간 눈에 띄게 알려준다(4초 뒤 자동으로 사라짐).
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.icloud.fill").foregroundColor(.green)
+                Text("iCloud 업로드 완료")
+                    .font(.caption).foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal).padding(.vertical, 6)
+            .background(.ultraThinMaterial)
+            .transition(.opacity)
+            .animation(.easeInOut, value: session.store.cloudExportJustSucceeded)
         }
         if session.store.lastSaveFailed {
             HStack(spacing: 8) {
