@@ -156,14 +156,6 @@ struct RoutesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top) { statusBanner }
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 1) {
-                    Text("Routes").font(.headline)
-                    Text(cloudSyncStatusText)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            }
             ToolbarItem(placement: .navigationBarLeading) { dataMenu }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -344,6 +336,16 @@ struct RoutesView: View {
     }
 
     @ViewBuilder private var statusBanner: some View {
+        // 제목 바로 아래 작은 글씨로 상시 표시 — 나브바 principal 자리는 좁아서 "iCloud 동기화
+        // 완료 · HH:mm" 같은 글자가 중간에 잘렸다. 화면 전체 너비를 쓰는 이 배너 영역에 두면
+        // 잘릴 일이 없다. 아래 진행 중/실패/완료 배너가 떠 있을 땐 같은 내용 반복이라 숨긴다.
+        if !session.store.cloudExportInProgress && !session.store.cloudImportInProgress
+            && !session.store.cloudExportFailed && !session.store.cloudExportJustSucceeded {
+            Text(cloudSyncStatusText)
+                .font(.caption2).foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 3)
+        }
         // iCloud 업로드가 끝나기 전에 앱을 종료·재설치하면 방금 지우거나 바꾼 내용이 서버에
         // 반영되기 전에 통째로 날아간다(실제로 재현된 사고) — 업로드 중엔 눈에 띄게 경고한다.
         if session.store.cloudExportInProgress {
