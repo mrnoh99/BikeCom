@@ -111,6 +111,7 @@ targets:
         NSLocationAlwaysAndWhenInUseUsageDescription: "백그라운드에서도 라이딩 경로를 기록합니다."
         NSLocationWhenInUseUsageDescription: "라이딩 중 GPS 경로·거리·속도를 기록합니다."
         NSBluetoothAlwaysUsageDescription: "속도·케이던스(CSC)·심박 BLE 센서를 폰에 직접 연결하고, 받은 심박을 페어링되지 않은 다른 아이폰이 받을 수 있도록 다시 광고합니다."
+        NSAppleMusicUsageDescription: "Apple Music에서 재생 중인 곡 제목·아티스트를 대시보드에 표시합니다."
         UIBackgroundModes:
           - location
           - bluetooth-central
