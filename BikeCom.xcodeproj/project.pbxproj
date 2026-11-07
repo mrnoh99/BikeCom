@@ -16,6 +16,7 @@
 		156887E4CBF1AD3AE179B08B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 611ECA4FBCFFE10D1468C8EA /* Assets.xcassets */; };
 		167A0BCA80B999FD356FE960 /* MoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CCC95051CFA41EEBECEBDC8 /* MoreView.swift */; };
 		1985189C324E4F4E784E4611 /* WheelPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D73E76510EAF4BEDAEC8A2B /* WheelPresets.swift */; };
+		25A183A75746AFA7F1D125D8 /* NowPlayingMusicObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7869F471126B65A35369601C /* NowPlayingMusicObserver.swift */; };
 		262C6FA5AF1BFE34609B0A56 /* SensorSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2284CCE1E60E2F4B051CC192 /* SensorSettingsView.swift */; };
 		2F3C18AB86E30A6AC461FE5C /* BikeCom.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = BE001DDAABCAFEB02984EA6D /* BikeCom.xcdatamodeld */; };
 		362514342630FB60BDAC3AA0 /* BikeComApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F868194B765D827FFA8A3EA5 /* BikeComApp.swift */; };
@@ -143,6 +144,7 @@
 		6CCC95051CFA41EEBECEBDC8 /* MoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreView.swift; sourceTree = "<group>"; };
 		7563F57B06AEE1CECCF2E9FE /* RideSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSettingsSheet.swift; sourceTree = "<group>"; };
 		772EE0BC899036E94E734D23 /* CalendarLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarLogger.swift; sourceTree = "<group>"; };
+		7869F471126B65A35369601C /* NowPlayingMusicObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingMusicObserver.swift; sourceTree = "<group>"; };
 		7F3B52AB80D4B405D89565A6 /* BikeComWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeComWatchApp.swift; sourceTree = "<group>"; };
 		802E1929F3A53B16347055A1 /* BLECSCManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLECSCManager.swift; sourceTree = "<group>"; };
 		82E09C914E9ADDB10A4A0D33 /* RideSaveProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSaveProgressView.swift; sourceTree = "<group>"; };
@@ -299,6 +301,7 @@
 				F1EDD52253832C1C27244F7C /* HealthWorkoutImporter.swift */,
 				A34438C57A0D6781F8A5ECBD /* HeartRateBroadcaster.swift */,
 				258B0A3578A8CEBA8ACB581A /* LocationManager.swift */,
+				7869F471126B65A35369601C /* NowPlayingMusicObserver.swift */,
 				6533B0D069EA3631A29D8390 /* RideRecordMerge.swift */,
 				A5AD724CC74E317C6D46F8C3 /* RideSession.swift */,
 				32A6874FD29E47F42ABCF432 /* SeedRides.swift */,
@@ -587,6 +590,7 @@
 				8720689EE0E49F6D0F2A33D8 /* MapTabView.swift in Sources */,
 				7F4FE873BD90516A1D6C1DA8 /* MetricCell.swift in Sources */,
 				167A0BCA80B999FD356FE960 /* MoreView.swift in Sources */,
+				25A183A75746AFA7F1D125D8 /* NowPlayingMusicObserver.swift in Sources */,
 				B0B3EB3EF4F4FC3C0215E783 /* PastCoursesMapView.swift in Sources */,
 				698DAB553B72F8903B52D08C /* RideRecord.swift in Sources */,
 				FE7906C9D8B3EF0AD407B176 /* RideRecordMerge.swift in Sources */,
