@@ -190,7 +190,7 @@ struct NowPlayingCell: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .center, spacing: 2) {
             MarqueeText(text: title,
                         font: .system(size: titleSize, weight: .bold),
                         color: Theme.value,
@@ -202,6 +202,6 @@ struct NowPlayingCell: View {
                             lineHeight: secondLineSize * 1.25)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
