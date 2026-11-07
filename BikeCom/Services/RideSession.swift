@@ -52,6 +52,7 @@ final class RideSession: ObservableObject {
     let bleHeartRate = BLEHeartRateManager()   // 폰 직결 BLE 심박(스트랩 또는 미페어링 워치 브로드캐스트)
     let healthKitHeartRate = HealthKitHeartRateManager()   // 폰 워크아웃 세션 경유 심박(이어버즈, 음악 재생과 동시 사용 가능)
     let health = HealthStore()          // Apple Health 누적 거리 + 폰 단독 워크아웃 저장
+    let nowPlayingMusic = NowPlayingMusicObserver()   // Apple Music 재생 중인 곡(제목·아티스트)
     let calendarLogger = CalendarLogger()   // Done 시 캘린더에 운동 요약 기록
     let healthImporter = HealthWorkoutImporter()   // 건강의 사이클링 워크아웃 가져오기
 
@@ -727,6 +728,11 @@ final class RideSession: ObservableObject {
     @Published private(set) var cadence: Int?
     @Published private(set) var maxCadence: Int?
 
+    // Apple Music 재생 정보 — Dashboard의 Climb/SpO2 자리에 재생 중일 때 대신 표시한다.
+    @Published private(set) var isMusicPlaying = false
+    @Published private(set) var nowPlayingTitle: String?
+    @Published private(set) var nowPlayingArtist: String?
+
     private var heartRateSamples: [Int] = []
     private var cadenceSamples: [Int] = []
     private var hrSeries: [(time: Date, bpm: Int)] = []   // GPX 트랙 심박 매칭용(시각 포함)
@@ -798,6 +804,16 @@ final class RideSession: ObservableObject {
             .sink { [weak self] bpm in
                 guard let self, !self.watch.heartRateConnected, !self.bleHeartRate.connected else { return }
                 self.ingestHeartRate(bpm > 0 ? bpm : nil)
+            }
+            .store(in: &cancellables)
+
+        nowPlayingMusic.$isPlaying
+            .combineLatest(nowPlayingMusic.$title, nowPlayingMusic.$artist)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] playing, title, artist in
+                self?.isMusicPlaying = playing
+                self?.nowPlayingTitle = title
+                self?.nowPlayingArtist = artist
             }
             .store(in: &cancellables)
 

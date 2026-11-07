@@ -168,3 +168,34 @@ struct MetricCell: View {
         }
     }
 }
+
+/// Climb/SpO2 자리를 대신해, Apple Music 재생 중인 곡 제목·아티스트를 보여주는 셀.
+/// 숫자 지표용 MetricCell과 달리 자유 길이 텍스트라 한 줄 말줄임으로 처리한다.
+struct NowPlayingCell: View {
+    @Environment(\.dashboardLayout) private var layout
+    let title: String
+    let artist: String?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "music.note")
+                .font(.system(size: layout.labelFont, weight: .semibold))
+                .foregroundColor(Theme.gold)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: layout.unitFont + 4, weight: .semibold))
+                    .foregroundColor(Theme.value)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if let artist, !artist.isEmpty {
+                    Text(artist)
+                        .font(.system(size: layout.unitFont, weight: .medium))
+                        .foregroundColor(Theme.label)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

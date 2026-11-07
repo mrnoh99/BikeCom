@@ -192,14 +192,20 @@ struct DashboardView: View {
                            rowIndex: 4, unit: "rpm")
             }
             divider
-            metricRow {
-                MetricCell(label: "Climb", value: fmt(session.elevationGainMeters, 0),
-                           rowIndex: 5, unit: "m")
-                MetricCell(label: "SpO2",
-                           value: session.spo2Percent.map(String.init) ?? dash,
-                           rowIndex: 5,
-                           subvalue: session.spo2Percent != nil ? (session.spo2LatestTimeText ?? " ") : " ",
-                           valueSuffix: session.spo2Percent != nil ? "%" : nil)
+            if session.isMusicPlaying, let title = session.nowPlayingTitle {
+                metricRow {
+                    NowPlayingCell(title: title, artist: session.nowPlayingArtist)
+                }
+            } else {
+                metricRow {
+                    MetricCell(label: "Climb", value: fmt(session.elevationGainMeters, 0),
+                               rowIndex: 5, unit: "m")
+                    MetricCell(label: "SpO2",
+                               value: session.spo2Percent.map(String.init) ?? dash,
+                               rowIndex: 5,
+                               subvalue: session.spo2Percent != nil ? (session.spo2LatestTimeText ?? " ") : " ",
+                               valueSuffix: session.spo2Percent != nil ? "%" : nil)
+                }
             }
             divider
             distanceStatsRow(layout)
