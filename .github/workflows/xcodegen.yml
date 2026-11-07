@@ -37,10 +37,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add BikeCom.xcodeproj
+          # xcodegen 은 project.pbxproj 뿐 아니라 각 타깃의 info.path 에 있는 Info.plist도
+          # 다시 쓴다 — 전에는 BikeCom.xcodeproj만 커밋해서, project.yml의 info.properties를
+          # 고쳐도(예: NSAppleMusicUsageDescription 추가) 실제 Info.plist엔 반영되지 않고
+          # 조용히 유실됐다(런타임에 "Info.plist must contain an NS...UsageDescription key"로
+          # 크래시하는 식으로만 드러남). 생성되는 모든 Info.plist를 같이 커밋한다.
+          git add BikeCom.xcodeproj BikeCom/App/Info.plist BikeComWatch/Info.plist BikeComWatchWidget/Info.plist
           if git diff --cached --quiet; then
-            echo "BikeCom.xcodeproj 변경 없음"
+            echo "변경 없음"
           else
-            git commit -m "chore: regenerate BikeCom.xcodeproj via xcodegen [skip ci]"
+            git commit -m "chore: regenerate BikeCom.xcodeproj + Info.plist via xcodegen [skip ci]"
             git push origin HEAD:"${GITHUB_REF_NAME}"
           fi

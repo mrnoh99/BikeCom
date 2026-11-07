@@ -20,8 +20,14 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>GMSApiKey</key>
 	<string></string>
+	<key>KakaoJavaScriptAppKey</key>
+	<string></string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NMFNcpKeyId</key>
+	<string></string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Apple Music에서 재생 중인 곡 제목·아티스트를 대시보드에 표시합니다.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>속도·케이던스(CSC)·심박 BLE 센서를 폰에 직접 연결하고, 받은 심박을 페어링되지 않은 다른 아이폰이 받을 수 있도록 다시 광고합니다.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
@@ -50,6 +56,8 @@
 	<array>
 		<string>location</string>
 		<string>bluetooth-central</string>
+		<string>workout-processing</string>
+		<string>remote-notification</string>
 	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>
