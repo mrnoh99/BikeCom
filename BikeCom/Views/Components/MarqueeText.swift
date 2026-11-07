@@ -31,6 +31,9 @@ struct MarqueeText: View {
                             .onChange(of: inner.size.width) { _, w in textWidth = w; restartLoop() }
                     }
                 )
+                // 폭에 다 들어가면(overflow == 0) 가운데 정렬, 흘러야 하면(overflow > 0)
+                // 왼쪽 끝에서 시작해 거기서부터 음수로 offset 을 줘 왼쪽으로 흐르게 한다.
+                .frame(width: outer.size.width, alignment: overflow > 0 ? .leading : .center)
                 .offset(x: offset)
                 .onAppear {
                     containerWidth = outer.size.width
