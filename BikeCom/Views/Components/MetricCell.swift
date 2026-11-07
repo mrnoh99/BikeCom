@@ -169,33 +169,37 @@ struct MetricCell: View {
     }
 }
 
-/// Climb/SpO2 자리를 대신해, Apple Music 재생 중인 곡 제목·아티스트를 두 줄(제목/아티스트)로
-/// 크게 보여주는 셀. 폭에 다 안 들어가는 줄은 말줄임 대신 좌우로 흐르는 마키(MarqueeText)로
+/// Climb/SpO2 자리를 대신해, Apple Music 재생 중인 곡 제목을 1행에, 아티스트·작곡가를 2행에
+/// 크게 보여주는 셀. 폭에 다 안 들어가는 줄은 말줄임 대신 왼쪽으로만 흐르는 마키(MarqueeText)로
 /// 끝까지 보여준다.
 struct NowPlayingCell: View {
     @Environment(\.dashboardLayout) private var layout
     let title: String
     let artist: String?
+    let composer: String?
 
-    private var titleSize: CGFloat { layout.unitFont + 10 }
-    private var artistSize: CGFloat { layout.unitFont + 4 }
+    private var titleSize: CGFloat { layout.unitFont + 14 }
+    private var secondLineSize: CGFloat { layout.unitFont + 8 }
+
+    /// 아티스트(연주가)·작곡가를 합친 2행 텍스트. 같은 값이면 한 번만 보여준다.
+    private var secondLineText: String? {
+        var parts: [String] = []
+        if let artist, !artist.isEmpty { parts.append(artist) }
+        if let composer, !composer.isEmpty, composer != artist { parts.append(composer) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "music.note")
-                .font(.system(size: titleSize, weight: .semibold))
-                .foregroundColor(Theme.gold)
-            VStack(alignment: .leading, spacing: 2) {
-                MarqueeText(text: title,
-                            font: .system(size: titleSize, weight: .bold),
-                            color: Theme.value,
-                            lineHeight: titleSize * 1.25)
-                if let artist, !artist.isEmpty {
-                    MarqueeText(text: artist,
-                                font: .system(size: artistSize, weight: .medium),
-                                color: Theme.label,
-                                lineHeight: artistSize * 1.25)
-                }
+        VStack(alignment: .leading, spacing: 2) {
+            MarqueeText(text: title,
+                        font: .system(size: titleSize, weight: .bold),
+                        color: Theme.value,
+                        lineHeight: titleSize * 1.25)
+            if let secondLineText {
+                MarqueeText(text: secondLineText,
+                            font: .system(size: secondLineSize, weight: .medium),
+                            color: Theme.label,
+                            lineHeight: secondLineSize * 1.25)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

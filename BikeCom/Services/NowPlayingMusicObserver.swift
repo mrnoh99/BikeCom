@@ -11,6 +11,7 @@ final class NowPlayingMusicObserver: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var title: String?
     @Published private(set) var artist: String?
+    @Published private(set) var composer: String?
 
     private let player = MPMusicPlayerController.systemMusicPlayer
     private var isGeneratingNotifications = false
@@ -53,5 +54,6 @@ final class NowPlayingMusicObserver: ObservableObject {
         isPlaying = player.playbackState == .playing
         title = player.nowPlayingItem?.title
         artist = player.nowPlayingItem?.artist
+        composer = player.nowPlayingItem?.composer
     }
 }

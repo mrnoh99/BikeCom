@@ -194,7 +194,8 @@ struct DashboardView: View {
             divider
             if session.isMusicPlaying, let title = session.nowPlayingTitle {
                 metricRow {
-                    NowPlayingCell(title: title, artist: session.nowPlayingArtist)
+                    NowPlayingCell(title: title, artist: session.nowPlayingArtist,
+                                   composer: session.nowPlayingComposer)
                 }
             } else {
                 metricRow {

@@ -30,7 +30,9 @@ struct MarqueeText: View {
                 .offset(x: scrolled ? -overflow : 0)
                 .animation(
                     overflow > 0
-                        ? .linear(duration: Double(overflow) / 28).repeatForever(autoreverses: true).delay(1)
+                        // autoreverses: false — 왼쪽으로 끝까지 흐른 뒤 오른쪽으로 되돌아오지
+                        // 않고, 시작 위치로 즉시 돌아가 다시 왼쪽으로만 흐른다(티커 방식).
+                        ? .linear(duration: Double(overflow) / 28).repeatForever(autoreverses: false).delay(1)
                         : .default,
                     value: scrolled
                 )
