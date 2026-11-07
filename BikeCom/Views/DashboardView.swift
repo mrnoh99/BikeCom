@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// ⚙️ 메뉴로 이동하는 화면들.
 enum DashDestination: String, Identifiable {
@@ -197,6 +198,8 @@ struct DashboardView: View {
                     NowPlayingCell(title: title, artist: session.nowPlayingArtist,
                                    composer: session.nowPlayingComposer)
                 }
+                .contentShape(Rectangle())
+                .onTapGesture { openMusicApp() }
             } else {
                 metricRow {
                     MetricCell(label: "Climb", value: fmt(session.elevationGainMeters, 0),
@@ -253,6 +256,13 @@ struct DashboardView: View {
     private func metricRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         HStack(spacing: 0) { content() }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// 재생 정보 표시줄을 탭하면 Music 앱으로 전환한다("music://"는 Apple이 공식 문서화한
+    /// Music 앱 전용 URL 스킴). 기기엔 Music 앱이 항상 있어 canOpenURL 확인 없이 바로 연다.
+    private func openMusicApp() {
+        guard let url = URL(string: "music://") else { return }
+        UIApplication.shared.open(url)
     }
 
     private var divider: some View {
